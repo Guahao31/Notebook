@@ -170,3 +170,95 @@ vector<string> simplifiedFractions(int n) {
     return res;
 }
 ```
+
+## 782. 变为棋盘
+
+[题目链接](https://leetcode.cn/problems/transform-to-chessboard/)
+
+```
+一个 n x n 的二维网络 board 仅由 0 和 1 组成 。每次移动，你能任意交换两列或是两行的位置。
+
+返回 将这个矩阵变为  “棋盘”  所需的最小移动次数 。如果不存在可行的变换，输出 -1。
+
+“棋盘” 是指任意一格的上下左右四个方向的值均与本身不同的矩阵。
+```
+
+思考量不大，但是因为每个判断与处理都要涉及行和列，代码量较大。观察棋盘，先考虑哪些给定网格不能组成棋盘，对于一行，由于换列时，不同行整列同时操作，要实现棋盘形，那么每一行要么与第一行**完全相同**，要么与第一行**完全相反**，且与第一行相同的行数（包括第一行）与相反的行数至多差 `1`（`n` 为奇数时差一，为偶数时相同）；对列的要求几乎相同，不再赘述。
+
+在判断能够构成棋盘后，要分行移动与列移动来统计移动数量。总的思路是确定**原第一行仍位于第一行**还是**与原第一行相反的行应位于第一行**，这也是这道题目拖时间比较久的原因。
+
+```cpp
+int movesToChessboard(vector<vector<int>>& board) {
+    size_t n = board.size();
+    int cnt_same0_row = 1;
+    vector<bool> is_same0(n, true);
+    vector<int> &r0 = board[0];
+    for(size_t i = 1; i < n; ++i) {
+        vector<int> &rt = board[i];
+        if(r0[0] == rt[0]) {
+            for(int j = 1; j < n; ++j) if(r0[j] != rt[j]) return -1;
+            ++cnt_same0_row;
+        } else {
+            for(int j = 1; j < n; ++j) if(r0[j] == rt[j]) return -1;
+            is_same0[i] = false;
+        }
+    }
+    if(((n%2 == 0) && cnt_same0_row != n-cnt_same0_row) || ((n%2==1) && (2*cnt_same0_row+1 != n && 2*cnt_same0_row-1 != n))) return -1;
+    
+    // check col
+    int cnt_same0_col = 1;
+    vector<bool> is_same0_col(n, true);
+    for(int j = 1; j < n; ++j) {
+        if(board[0][0] == board[0][j]) {
+            for(int i = 1; i < n; ++i) if(board[i][j] != board[i][0]) return -1;
+            ++cnt_same0_col;
+        } else {
+            for(int i = 1; i < n; ++i) if(board[i][j] == board[i][0]) return -1;
+            is_same0_col[j] = false;
+        }
+    }
+    if(((n%2 == 0) && cnt_same0_col != n-cnt_same0_col) || ((n%2==1) && ((2*cnt_same0_col+1 != n) &&(2*cnt_same0_col-1 != n)))) return -1;
+
+    int move_row = 0;
+    int cnt_same0_even = 0;
+    for(int i = 0; i < n; i += 2) {
+        cnt_same0_even += is_same0[i];
+    }
+    if(n%2 == 0) {
+        if(cnt_same0_even >= n/2) {
+            move_row = cnt_same0_even - n/2;
+        } else {
+            move_row = n/2 - cnt_same0_even;
+            move_row = move_row > cnt_same0_even ? cnt_same0_even : move_row;
+        }
+    } else {
+        if(cnt_same0_row * 2 > n) {
+            move_row = (n+1)/2-cnt_same0_even;
+        } else {
+            move_row = cnt_same0_even;
+        }
+    }
+
+    int move_col = 0;
+    cnt_same0_even = 0;
+    for(int i = 0; i < n; i += 2) {
+        cnt_same0_even += is_same0_col[i];
+    }
+    if(n%2 == 0) {
+        if(cnt_same0_even >= n/2) {
+            move_col = cnt_same0_even - n/2;
+        } else {
+            move_col = n/2 - cnt_same0_even;
+            move_col = move_col > cnt_same0_even ? cnt_same0_even : move_col;
+        }
+    } else {
+        if(cnt_same0_col * 2 > n) {
+            move_col = (n+1)/2-cnt_same0_even;
+        } else {
+            move_col = cnt_same0_even;
+        }
+    }
+
+    return move_col + move_row;
+}
+```
