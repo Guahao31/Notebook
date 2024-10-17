@@ -262,3 +262,122 @@ int movesToChessboard(vector<vector<int>>& board) {
     return move_col + move_row;
 }
 ```
+
+## 2935. 找出强数对的最大异或值 II
+
+[题目链接](https://leetcode.cn/problems/maximum-strong-pair-xor-ii)
+
+完全没有做出来的题目，最开始的想法是从低位开始遍历，寻找尽可能多的位不同的点，但找不到能将复杂度降到 `O(N^2)` 的方法。参考[题解](https://leetcode.cn/problems/maximum-strong-pair-xor-ii/solutions/2523213/0-1-trie-hua-dong-chuang-kou-pythonjavac-gvv2/)才做出来。
+
+思路与刚才提到的部分一致，但是应该从高位开始，依次尝试最终答案 `res` 能否为 `1`。尝试的过程就是根据当前的 `res`（低位均为 `0`）与数组进行异或，得到的结果在一个 Hashmap 中查找，这个 Hashmap 记录了掩码后的值（使低位为 `0`）与本身的映射。在每个数值的位宽为常数时，这个算法的复杂度为 `O(NlogN)`。
+
+```cpp
+int maximumStrongPairXor(vector<int>& nums) {
+    // sort
+    sort(nums.begin(), nums.end());
+    
+    // for x < y; y - x <= x ---> y <= 2*x ---> y <= x << 1
+    unsigned int res = 0;
+    size_t sz = nums.size();
+    unsigned int mask = 0;
+    for(int i = 31; i >= 0; --i) {
+        unsigned int new_res = res | ((unsigned int)1 << i);
+        mask |= 1 << i;
+        unordered_map<int, int> m;
+        for(const int &a: nums) {
+            unsigned int mask_a = mask & a;
+            auto it = m.find(mask_a ^ new_res);
+            if(it != m.end() && it->second << 1 >= a) {
+                res = new_res;
+                break;
+            }
+            m[mask_a] = a;
+        }
+    }
+    return res;
+}
+```
+
+这个题目还学到了一些东西，比如 gcc 提供的[内置函数](https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Other-Builtins.html) `__builtin_clz, builtin_ctz` 等等，方便对二进制位的统计和操作。题目还可以通过[字典树](https://oi-wiki.org/string/trie/)来完成，进行了初步的学习但没有尝试编写代码。
+
+## 481. 神奇字符串
+
+[题目链接](https://leetcode.cn/problems/magical-string/)
+
+```
+神奇字符串 s 仅由 '1' 和 '2' 组成，并需要遵守下面的规则：
+
+神奇字符串 s 的神奇之处在于，串联字符串中 '1' 和 '2' 的连续出现次数可以生成该字符串。
+s 的前几个元素是 s = "1221121221221121122……" 。如果将 s 中连续的若干 1 和 2 进行分组，可以得到 "1 22 11 2 1 22 1 22 11 2 11 22 ......" 。每组中 1 或者 2 的出现次数分别是 "1 2 2 1 1 2 1 2 2 1 2 2 ......" 。上面的出现次数正是 s 自身。
+
+给你一个整数 n ，返回在神奇字符串 s 的前 n 个数字中 1 的数目。
+```
+
+使用快慢指针，慢指针每次走 `1` 步，快指针每次走 `a[slow]` 步，其中 `a` 是一个容量 `n+2` 的数组。思考很久有没有空间 `O(1)` 的方法但无果，主要是因为要记录快指针走过的位置（用 `t` 表示快指针路过时应写入的值 `1` 或 `2`）。`t` 在每次快指针走动后需要反转，并写入快指针的“落脚点”。需要注意的是，因为快指针可能走到 `n` 外，为了方便代码书写，数组申请了 `n+2` 个空间，并在最后判断数组的多余两个元素是否有 `1`，如有需要减去对应的数量，再返回结果。
+
+使用快慢指针的本质是，快指针指向第一层数组，慢指针指向第二层数组。
+
+```cpp
+int magicalString(int n) {
+    int res = 0;
+    int t = 1;
+    vector<int> a(n+2, 0);
+    int fast = 0;
+    int slow = 0;
+
+    a[0] = 1;
+    res = 1;
+    while(fast < n) {
+        // decide how many hops does fast take
+        int hops = a[slow];
+        if(hops == 1) {
+            fast++;
+            t = t == 1 ? 2 : 1;
+            if(t == 1) ++res;
+        } else {
+            // hops = 2
+            a[fast+1] = t;
+            t = t == 1 ? 2 : 1;
+            fast += 2;
+            ++res;
+        }
+        a[fast] = t;
+        slow++;
+    }
+    if(a[n+1] == 1) --res;
+    if(a[n] == 1) --res;
+
+    return res;
+}
+```
+
+## 910. 最小差值 II
+
+[题目链接](https://leetcode.cn/problems/smallest-range-ii/)
+
+```
+给你一个整数数组 nums，和一个整数 k 。
+
+对于每个下标 i（0 <= i < nums.length），将 nums[i] 变成 nums[i] + k 或 nums[i] - k 。
+
+nums 的 分数 是 nums 中最大元素和最小元素的差值。
+
+在更改每个下标对应的值之后，返回 nums 的最小 分数 。
+```
+
+（将数组排序后）用贪心策略，把小数变大，把大数变小。寻找一个下标 `idx` 使 `[0, idx)` 的元素变大，使 `[idx, N-1]` 的元素变小，寻找这样变化条件下的最大值与最小值之差。此时最大值是 `nums[idx-1]+k` 与 `origin_max-k` 中较大的一个；最小值是 `nums[idx]-k` 与 `origin_min+k` 中较小的一个；上述两者的差值就是选取 `idx` 作为增大/减少分界时的最值之差，从中寻找最小的最值之差即为本题目的答案。
+
+```cpp
+int smallestRangeII(vector<int>& nums, int k) {
+    sort(nums.begin(), nums.end());
+    int ma = nums.back();
+    int mi = nums[0];
+    int res = ma - mi;
+    for(int i = 1; i < nums.size(); ++i) {
+        int upper = nums[i-1] + k > ma-k ? nums[i-1]+k : ma-k;
+        int lower = nums[i]-k < mi+k ? nums[i]-k : mi+k;
+        res = res > upper-lower ? upper-lower : res;
+    }
+    return res;
+}
+```

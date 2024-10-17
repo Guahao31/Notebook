@@ -15,8 +15,8 @@ while True:
 	while r in done_set or r in ignore_set:
 		r = randrange(1, TOTAL_NUM)
 	print(r)
-	print('Page', r//50+1)
-	print('https://leetcode.cn/problemset/?page={}'.format(r//50+1))
+	print('Page', (r-1)//50+1)
+	print('https://leetcode.cn/problemset/?page={}'.format((r-1)//50+1))
 	choice = input('[y]es, [n]o, [i]gnore or [b]reak\n')
 	if choice.strip() == 'y':
 		with open(done_filename, 'a') as f:
