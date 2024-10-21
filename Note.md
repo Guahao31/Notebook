@@ -381,3 +381,75 @@ int smallestRangeII(vector<int>& nums, int k) {
     return res;
 }
 ```
+
+## 1780. 判断一个数字是否可以表示成三的幂的和
+
+[题目链接](https://leetcode.cn/problems/check-if-number-is-a-sum-of-powers-of-three/)
+
+```
+给你一个整数 n ，如果你可以将 n 表示成若干个不同的三的幂之和，请你返回 true ，否则请返回 false 。
+
+对于一个整数 y ，如果存在整数 x 满足 y == 3x ，我们称这个整数 y 是三的幂。
+```
+
+从“三进制”角度出发，每一个 3 的幂的系数不是 `1` 就是 `0`，不能出现 `2`；从竖式角度出发，就是每一步的余数不能是 `2`。
+
+```cpp
+bool checkPowersOfThree(int n) {
+    while(n > 0) {
+        int rem = n % 3;
+        if(n % 3 == 2) return false;
+        n /= 3;
+    }
+    return true;
+}
+```
+
+## 1278. 分割回文串 III
+[题目链接](https://leetcode.cn/problems/palindrome-partitioning-iii/)
+
+```
+给你一个由小写字母组成的字符串 s，和一个整数 k。
+
+请你按下面的要求分割字符串：
+
+首先，你可以将 s 中的部分字符修改为其他的小写英文字母。
+接着，你需要把 s 分割成 k 个非空且不相交的子串，并且每个子串都是回文串。
+请返回以这种方式分割字符串所需修改的最少字符数。
+```
+
+用动态规划解决问题。`dp[i][j]` 表示将前 `i` 个字符构成的字符串划分为 `j` 个回文串最少改变的字符数量。基于已有 `j-1` 个回文串的子问题，需要考虑添加的包含 `s[i]` 的第 `j` 个字符串，需要枚举这个字符串开始的下标 `i0`，其中 `0 <= i0 <= i`。有 `dp[i][j] = min(dp[i0][j-1] + cost(i0+1, i))`，其中 `cost(i, j)` 表示将 `s[i:j]` 子串变为回文串需要改变的字符数量（可以通过指向首尾的双指针统计获得，但会导致时间复杂度过高）。
+
+为了降低 `cost` 的计算成本，需要预处理得到 `cost[i][j]`，这一步也可以使用动态规划来完成。对于 `i >= j` 的情况，对应空字符串，`cost=0`；其他符合边界的条件下 `cost[i][j] = cost[i+1][j-1] + (s[i] != s[j])`。观察递推关系，可以从大到小遍历 `i`，从小到大遍历 `j` 来完成。
+
+```cpp
+int palindromePartition(string s, int k) {
+    int len = s.length();
+    int c[len+1][len+1];
+    memset(&c[len-1], 0, sizeof(int) * (len+1));
+    for(int i = len-2; i>= 0; --i) {
+        c[i][0] = 0;
+        for(int j = 1; j < len; ++j) {
+            if(i >= j) c[i][j] = 0;
+            else c[i][j] = c[i+1][j-1] + (s[i] != s[j]);
+        }
+    }
+    int dp[len+1][k+1];
+    dp[0][0] = 0;
+    for(int i = 1; i <= len; ++i) {
+        for(int j = 1; j <= k && j <= i; ++j) {
+            if(j == 1) {
+                dp[i][j] = c[0][i-1];
+            } else {
+            int min = INT_MAX;
+            for(int i0 = j-1; i0 < i; ++i0) {
+                int t = dp[i0][j-1] + c[i0][i-1];
+                min = min < t ? min : t;
+            }
+            dp[i][j] = min;
+        }
+        }
+    }
+    return dp[len][k];
+}
+```
