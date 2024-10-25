@@ -499,3 +499,46 @@ int numDistinct(string s, string t) {
     return dp[0];
 }
 ```
+
+## 2958. 最多 K 个重复元素的最长子数组
+
+[题目链接](https://leetcode.cn/problems/length-of-longest-subarray-with-at-most-k-frequency/)
+
+```
+给你一个整数数组 nums 和一个整数 k 。
+
+一个元素 x 在数组中的 频率 指的是它在数组中的出现次数。
+
+如果一个数组中所有元素的频率都 小于等于 k ，那么我们称这个数组是 好 数组。
+
+请你返回 nums 中 最长好 子数组的长度。
+
+子数组 指的是一个数组中一段连续非空的元素序列。
+```
+
+使用滑动窗口解决问题，利用一个 Hashmap 记录现在窗口中每个数有多少个。当遇到窗口右侧扩展时，对应 `nums[right]` 在窗口中已经有 `k` 个时，需要通过增加 `left` 来缩短窗口，并对应地更新 Hashmap。
+
+```cpp
+int maxSubarrayLength(vector<int>& nums, int k) {
+    if(k == 0) return 0;
+    int res = 0;
+    int left = 0;
+    unordered_map<int, int> m;
+    for(size_t i = 0; i < nums.size(); ++i) {
+        int t = nums[i];
+        if(m[t] == k) {
+            // need to move 'left'
+            if(i-left > res) res = i-left;
+            while(nums[left] != t) {
+                m[nums[left]]--;
+                ++left;
+            }
+            ++left;
+        } else {
+            m[t]++;
+        }
+    }
+    if(nums.size()-left > res) res = nums.size()-left;
+    return res;
+}
+```
