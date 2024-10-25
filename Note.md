@@ -453,3 +453,49 @@ int palindromePartition(string s, int k) {
     return dp[len][k];
 }
 ```
+
+## 115. 不同的子序列
+
+[题目链接](https://leetcode.cn/problems/distinct-subsequences/)
+
+```
+给你两个字符串 s 和 t ，统计并返回在 s 的 子序列 中 t 出现的个数，结果需要对 109 + 7 取模。
+```
+
+考虑使用动态规划解决问题。使用 `dp[i][j]` 来表示 `s[i:]` 的子序列中中 `t[j:]` 出现的个数。若 `s[i]==t[j]`，则可以分为两位匹配与不匹配两种情况，对于两位匹配的情况，匹配数量与 `dp[i+1][j+1]` 相同（这一位匹配，只需要找子串后边的数量），对于两位不匹配的情况，匹配数量与 `dp[i+1][j]` 相等（即 `s[i+1:` 与 `t[j:]` 的匹配情况；若 `s[i]!=t[j]` 则只有不匹配的情况，此时匹配数量为 `dp[i+1][j]`。总结如下：
+
+```
+dp[i][j] = (s[i]==s[j]) ? dp[i+1][j+1]+dp[i+1][j] : dp[i+1][j]
+```
+
+观察到这个递推关系在第 `i` 行仅与 `i+1` 行有关系，则可以重复利用一行 `dp[]` 数组存放。即：
+
+```
+dp_new[j] = (s[i]==s[j]) ? dp_old[j+1]+dp_old[j] : dp_old[j]
+```
+
+考察边界条件 `dp[len_s][len_t]` 表示两个空串的子序列匹配，则其值 `dp[len_t]=1`。代码中需要注意的细节：`i` 需要从大到小遍历，以在 `i` 行利用 `i+1` 行的结果；在使用一行记录的情况下，`j` 需要从小到大遍历，以避免覆盖 `dp[j+1]` 的值。
+
+```cpp
+int numDistinct(string s, string t) {
+    int mod = 1e9 + 7;
+    size_t len_s = s.length();
+    size_t len_t = t.length();
+    if(len_s < len_t) return 0;
+
+    vector<int> dp(1005, 0);
+    dp[len_t] = 1;
+    for(int i = len_s-1; i >= 0; --i) {
+        for(int j = 0; j < len_t; ++j) {
+            if(s[i] == t[j]) {
+                dp[j] = dp[j+1] + dp[j];
+                dp[j] %= mod;
+            } else {
+                dp[j] = dp[j];
+                dp[j] %= mod;
+            }
+        }
+    }
+    return dp[0];
+}
+```
