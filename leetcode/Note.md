@@ -542,3 +542,49 @@ int maxSubarrayLength(vector<int>& nums, int k) {
     return res;
 }
 ```
+
+## 2850. 将石头分散到网格图的最少移动次数
+
+```
+给你一个大小为 3 * 3 ，下标从 0 开始的二维整数矩阵 grid ，分别表示每一个格子里石头的数目。网格图中总共恰好有 9 个石头，一个格子里可能会有 多个 石头。
+
+每一次操作中，你可以将一个石头从它当前所在格子移动到一个至少有一条公共边的相邻格子。
+
+请你返回每个格子恰好有一个石头的 最少移动次数 。
+```
+
+只能想到用全排列一个个尝试，首先有一个来源数组 `from` 存放所有有多个（不止一个）石头的格子坐标，以及一个去向数组 `to` 来存放所有没有石头的格子坐标。[题解](https://leetcode.cn/problems/minimum-moves-to-spread-stones-over-grid/solutions/2435313/tong-yong-zuo-fa-zui-xiao-fei-yong-zui-d-iuw8/)中使用了 [next_permutation](https://en.cppreference.com/w/cpp/algorithm/next_permutation) 可以获得字典序的下一个排列（按照 `operator <` 进行比较），当传入的排列不是字典序最大时返回 `true` 并将迭代器之间的内容更新为下次排列；当传入的排列是字典序最大时返回 `false` 并将迭代器之间的内容更新成字典序最小的排列。
+
+```cpp
+int minimumMoves(vector<vector<int>>& grid) {
+		vector<pair<int, int>> from;
+		vector<pair<int, int>> to;
+		for(int i = 0; i < grid.size(); ++i) {
+				for(int j = 0; j < grid[0].size(); ++j) {
+						if(grid[i][j] == 0) {
+								to.push_back({i, j});
+						} else if(grid[i][j] > 1) {
+								for(int _ = 0; _ < grid[i][j]-1; ++_) from.push_back({i, j});
+						}
+				}
+		}
+
+		int res = INT_MAX;
+		do{
+				int tot = 0;
+				for(int i = 0; i < from.size(); ++i) {
+						tot += abs(from[i].first - to[i].first) + abs(from[i].second - to[i].second);
+				}
+				res = min(res, tot);
+		} while(next_permutation(from.begin(), from.end()));
+
+		return res;
+}
+```
+
+代码中需要注意以下几点：
+
+- 仅对 `from` 进行了全排列尝试，因为题目保证 `from` 与 `to` 元素数量相同（石头刚好有 9 个），因此 `to` 顺序不动，对 `from` 进行全排列，即可获得所有从 `from` 到 `to` 的一一映射。
+- 没有任何对 `from` 的排序操作，因为我们在遍历 `grid` 的时候分别让行和列从 `0` 自增，因此获得的 `from` 就是字典序最小的一个排列。
+
+很显然全排列的代价很大，时间复杂度能到 `O(mn * (mn)!)`，题解提到了[最小费用最大流](https://zh.wikipedia.org/wiki/%E6%9C%80%E5%B0%8F%E8%B4%B9%E7%94%A8%E6%9C%80%E5%A4%A7%E6%B5%81%E9%97%AE%E9%A2%98)，但没有看得太明白 orz
