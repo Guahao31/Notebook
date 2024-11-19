@@ -588,3 +588,48 @@ int minimumMoves(vector<vector<int>>& grid) {
 - 没有任何对 `from` 的排序操作，因为我们在遍历 `grid` 的时候分别让行和列从 `0` 自增，因此获得的 `from` 就是字典序最小的一个排列。
 
 很显然全排列的代价很大，时间复杂度能到 `O(mn * (mn)!)`，题解提到了[最小费用最大流](https://zh.wikipedia.org/wiki/%E6%9C%80%E5%B0%8F%E8%B4%B9%E7%94%A8%E6%9C%80%E5%A4%A7%E6%B5%81%E9%97%AE%E9%A2%98)，但没有看得太明白 orz
+
+## 968. 监控二叉树
+
+[题目链接](https://leetcode.cn/problems/binary-tree-cameras/)
+
+```
+给定一个二叉树，我们在树的节点上安装摄像头。
+
+节点上的每个摄影头都可以监视其父对象、自身及其直接子对象。
+
+计算监控树的所有节点所需的最小摄像头数量。
+```
+
+参考了[题解](https://leetcode.cn/problems/binary-tree-cameras/solutions/2452795/shi-pin-ru-he-si-kao-shu-xing-dpgai-chen-uqsf/)，使用树形 DP 完成题目，思路是使用 DFS 从下到上传递信息。每一个节点需要保证自己能被监控到，有三种情况下可以做到：自己是监控(`choose_this`)、自己的父节点是监控(`by_father`)或者自己的子节点是监控(`by_child`)。对于每一个节点，需要先获得其子节点的信息。
+
+对于当前节点
+
+- *如果选择当前节点作为监控*，左右子节点并不需要它的子节点作为监控，比较 `by_father` 与 `choose` 即可（这里用了贪心，子节点（1 个）作为监控时不需要考虑子节点的子节点（可能 2 个），因此在比较时没有考虑 `by_child`）；
+- *如果父节点作为监控*，则子节点需要保证子节点自己被监控到，从 `choose` 与 `by_child` 中寻找最小值，而当前节点一定保证可见，不需要添加监控点；
+- *如果父节点与自己都不是监控*，需要子节点保证当前节点被监控到，即至少有一个子节点是监控。
+
+代码的细节：对于 NULL 节点的处理，`choose_this` 设置为了 `INT_MAX/2` 为了规避可能产生的两数相加的溢出。
+
+```cpp
+void dfs(TreeNode *t, int *choose_this, int *by_father, int *by_child) {
+		if(t == NULL) {
+				*choose_this = INT_MAX >> 1;
+				*by_father = 0;
+				*by_child = 0;
+				return;
+		}
+		int l_choose, l_by_father, l_by_child;
+		int r_choose, r_by_father, r_by_child;
+		dfs(t->left, &l_choose, &l_by_father, &l_by_child);
+		dfs(t->right, &r_choose, &r_by_father, &r_by_child);
+		*choose_this = min(l_by_father, l_choose) + min(r_by_father, r_choose) + 1;
+		*by_father = min(l_choose, l_by_child) + min(r_choose, r_by_child);
+		*by_child = min(min(l_choose+r_by_child, l_by_child+r_choose), l_choose+r_choose);
+}
+int minCameraCover(TreeNode* root) {
+		int choose_this, by_father, by_child;
+		dfs(root, &choose_this, &by_father, &by_child);
+		return min(choose_this, by_child);
+}
+```
