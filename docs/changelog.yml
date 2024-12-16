@@ -1,6 +1,10 @@
 - "2024":
-  - "2024-12-9":
-    - function: Init
+    - "2024-12-16":
+        - newpage:
+            text: LLM-Training > ZeRO-Offload
+            href: /Notebook/llm-training/zero-offload/zero-offload
+    - "2024-12-9":
+        - function: Init
 # - "2024-11-27":
 #   - pageupdate:
 #       text: EDA > 数字集成电路设计 > 逻辑综合
