@@ -77,5 +77,54 @@ ZeRO-Offload 的设计希望可以做到：
 
 ![](fig/zero-offload-single-gpu.png)
 
-!!! note "图"
-    图中作者把 CPU 和 GPU 的运算合并为 *Computation Stream*，直接看图的话容易忽略 GPU 的等待；图中 *p swap* 似乎是笔误，应为 *CPU->GPU*（？
+!!! question "图"
+    图中作者把 CPU 和 GPU 的运算合并为 *Computation Stream*，直接看图的话容易忽略 GPU 的等待；图中 *p swap* 似乎是笔误，应为 *CPU->GPU* ？
+
+### 多卡训练
+
+ZeRO-Offload 使用基于 ZeRO 的数据并行使得训练拓展到多卡，关于 ZeRO 更详细的介绍可以查看 HobbitQia 的 [ZeRO 笔记](https://note.hobbitqia.cc/Paper/ZeRO/)。
+
+!!! Note "ZeRO"
+    [ZeRO](https://dl.acm.org/doi/10.5555/3433701.3433727) 发表在 SC'20 会议，简单来说 ZeRO 的思想就是将训练过程中的各类内容，如模型参数、梯度、优化器状态、激活值等，拆分到不同 GPU 中，使用 **GPU 间的通信开销来代替每张 GPU 的显存开销**，它根据拆分的内容分成了以下几个版本：
+
+    * ZeRO-1: 对优化器状态进行分割
+    * ZeRO-2: 对优化器状态、梯度进行分割
+    * ZeRO-3: 对优化器状态、梯度、参数进行分割
+
+ZeRO-Offload 使用了 ZeRO-2 策略，即将优化器状态、梯度拆分到每张 GPU 上保存和更新，并将拆分后的优化器状态、梯度及对应参数卸载到 对应 CPU 上负责参数更新。可以发现由于参数更新只需要使用节点负责的部分梯度数据，因此 GPU-CPU 通信的总开销并没有发生变化，仅增加了 GPU 之间的通信开销。同时，由于 CPU 的数量也会随着节点数量线性增长，并不会在 CPU 上产生新的运算瓶颈。
+
+![](fig/data-place-multiple-gpus.png)
+
+## CPU 上的运算优化
+
+### CPU 上的优化器优化
+
+本文提到自己的一个贡献是充分使用了 CPU 的运算能力，也使用 SIMD 指令、Loop Unrolling、OMP 多线程等方法优化了 CPU 的运算，提高了 CPU 上优化器参与参数更新的效率。这部分并不是方法上的创新，具体细节不再赘述。
+
+### 延迟一步参数更新
+
+One-Step Delayed Parameter Update（下称 DPU）是本文个人最不理解的设计点。设计初衷很好理解：CPU 的运算能力远弱于 GPU，有可能出现 GPU 完成运算并空置等待 CPU 运算的情况，为了解决这个问题，作者设计了 DPU 来实际上跳过一步参数更新过程，以此缓解 CPU 的运算压力。DPU 的训练过程如下所述：
+
+* 照常进行 $N-1$ 次迭代（包括前向、反向、参数更新等）
+* 在第 $N$ 次迭代时，GPU 完成梯度运算，并将梯度传输给 CPU，但跳过这一步的 CPU 参数更新
+* 在第 $N+1$ 次迭代时，CPU 使用第 $N$ 次迭代获得的梯度更新参数，同时 GPU 使用旧的参数进行一次前向、反向传播
+* 从第 $N+1$ 次迭代开始，GPU 使用的参数都是两轮前的参数而非上一轮应该更新的参数
+
+![](fig/delayed-parameter-update.png)
+
+!!! question "训练语义的改变"
+    一个很明显的问题是，使用 DPU 策略后训练的过程被改变了，这是否会影响训练的收敛以及模型精度？
+
+    作者给出的解释是，在进行过一段时间的训练之后才使用 DPU 策略，而不在训练的一开始就使用，可以避免在训练初期参数更新幅度较大时影响训练收敛。同时，作者通过实验证明引入 DPU 策略并没有过大影响模型精度。
+
+## 实验
+
+* 实验环境：DGX-2 节点（使用 1 个节点测试吞吐，8 个节点测试模型大小扩展性与吞吐）
+    * 16 NVIDIA Tesla V100 Tensor Core GPUs, 32GB HBM2 on each GPU
+    * 2 Intel Xeon Platinum 8168 Processors, 1.5TB DDR4, 32K L1 cache, 1M L2 cache, 33M L3 cache
+    * bidirectional 32GBps PCIe
+* 任务：GPT-2 等基于 Transformer 的模型；使用 GPT-2、BERT 等测试 DPU 策略的收敛与模型精度
+
+## 结论
+
+ZeRO-Offload 把训练过程简化后进行设计，确定将哪些数据卸载到 CPU 中，以此充分利用 CPU 的内存空间与运算能力。但是很显然在正常训练过程（非 DPU 过程内）中 GPU 需要一直等待 CPU 的参数更新结果才能开始新一轮训练，这段空置时间无法被简单流水掉，个人认为会限制整体训练效率。
