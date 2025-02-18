@@ -2,32 +2,42 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://guahao31.github.io/Notebook/</loc>
-         <lastmod>2024-12-16</lastmod>
+         <lastmod>2025-02-18</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://guahao31.github.io/Notebook/changelog/</loc>
-         <lastmod>2024-12-16</lastmod>
+         <lastmod>2025-02-18</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://guahao31.github.io/Notebook/link/</loc>
-         <lastmod>2024-12-16</lastmod>
+         <lastmod>2025-02-18</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://guahao31.github.io/Notebook/llm-training/</loc>
-         <lastmod>2024-12-16</lastmod>
+         <lastmod>2025-02-18</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://guahao31.github.io/Notebook/llm-training/ZeRO/</loc>
-         <lastmod>2024-12-16</lastmod>
+         <lastmod>2025-02-18</lastmod>
+         <changefreq>daily</changefreq>
+    </url>
+    <url>
+         <loc>https://guahao31.github.io/Notebook/llm-training/checkfreq/checkfreq/</loc>
+         <lastmod>2025-02-18</lastmod>
+         <changefreq>daily</changefreq>
+    </url>
+    <url>
+         <loc>https://guahao31.github.io/Notebook/llm-training/gemini/gemini/</loc>
+         <lastmod>2025-02-18</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://guahao31.github.io/Notebook/llm-training/zero-offload/zero-offload/</loc>
-         <lastmod>2024-12-16</lastmod>
+         <lastmod>2025-02-18</lastmod>
          <changefreq>daily</changefreq>
     </url>
 </urlset>

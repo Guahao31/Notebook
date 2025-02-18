@@ -10,27 +10,23 @@
       
       
       
-        <link rel="canonical" href="https://guahao31.github.io/Notebook/llm-training/">
+        <link rel="canonical" href="https://guahao31.github.io/Notebook/llm-training/checkfreq/checkfreq/">
       
       
-        <link rel="prev" href="../link/">
       
-      
-        <link rel="next" href="zero-offload/zero-offload/">
-      
-      <link rel="icon" href="../assets/images/favicon.png">
+      <link rel="icon" href="../../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.4.2, mkdocs-material-9.0.4">
     
     
       
-        <title>LLM Training - Gua 的笔记本</title>
+        <title>CheckFreq: Frequent, Fine-Grained DNN Checkpointing - Gua 的笔记本</title>
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.9c788c91.min.css">
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.9c788c91.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.2505c338.min.css">
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.2505c338.min.css">
       
       
 
@@ -46,7 +42,7 @@
       
     
     
-      <link rel="stylesheet" href="../css/timeline.css">
+      <link rel="stylesheet" href="../../../css/timeline.css">
     
       <link rel="stylesheet" href="https://gcore.jsdelivr.net/npm/katex@0.15.1/dist/katex.min.css">
     
@@ -54,17 +50,17 @@
     
       <link rel="stylesheet" href="https://gcore.jsdelivr.net/npm/lxgw-wenkai-webfont@1.1.0/style.css">
     
-      <link rel="stylesheet" href="../css/custom.css">
+      <link rel="stylesheet" href="../../../css/custom.css">
     
-      <link rel="stylesheet" href="../css/card.css">
+      <link rel="stylesheet" href="../../../css/card.css">
     
-      <link rel="stylesheet" href="../css/tasklist.css">
+      <link rel="stylesheet" href="../../../css/tasklist.css">
     
-      <link rel="stylesheet" href="../css/flink.css">
+      <link rel="stylesheet" href="../../../css/flink.css">
     
-      <link rel="stylesheet" href="../css/more_changelog.css">
+      <link rel="stylesheet" href="../../../css/more_changelog.css">
     
-    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce((e,_)=>(e<<5)-e+_.charCodeAt(0),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce((e,_)=>(e<<5)-e+_.charCodeAt(0),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -93,7 +89,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#llm-training" class="md-skip">
+        <a href="#checkfreq-frequent-fine-grained-dnn-checkpointing" class="md-skip">
           跳转至
         </a>
       
@@ -107,7 +103,7 @@
 
 <header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="页眉">
-    <a href=".." title="Gua 的笔记本" class="md-header__button md-logo" aria-label="Gua 的笔记本" data-md-component="logo">
+    <a href="../../.." title="Gua 的笔记本" class="md-header__button md-logo" aria-label="Gua 的笔记本" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54Z"/></svg>
@@ -126,7 +122,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              LLM Training
+              CheckFreq: Frequent, Fine-Grained DNN Checkpointing
             
           </span>
         </div>
@@ -224,7 +220,7 @@
   
   
     <li class="md-tabs__item">
-      <a href=".." class="md-tabs__link">
+      <a href="../../.." class="md-tabs__link">
         Home
       </a>
     </li>
@@ -234,15 +230,13 @@
         
   
   
-    
-  
 
 
   
   
   
     <li class="md-tabs__item">
-      <a href="./" class="md-tabs__link md-tabs__link--active">
+      <a href="../../" class="md-tabs__link">
         LLM-Training
       </a>
     </li>
@@ -270,7 +264,7 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="导航栏" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href=".." title="Gua 的笔记本" class="md-nav__button md-logo" aria-label="Gua 的笔记本" data-md-component="logo">
+    <a href="../../.." title="Gua 的笔记本" class="md-nav__button md-logo" aria-label="Gua 的笔记本" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54Z"/></svg>
@@ -323,7 +317,7 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="..">Home</a>
+          <a href="../../..">Home</a>
           
             <label for="__nav_1">
               <span class="md-nav__icon md-icon"></span>
@@ -346,7 +340,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../changelog/" class="md-nav__link">
+      <a href="../../../changelog/" class="md-nav__link">
         更新记录
       </a>
     </li>
@@ -360,7 +354,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../link/" class="md-nav__link">
+      <a href="../../../link/" class="md-nav__link">
         友链
       </a>
     </li>
@@ -380,16 +374,14 @@
 
   
   
-    
-  
   
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
       
       
       
-      <input class="md-nav__toggle md-toggle " data-md-toggle="__nav_2" type="checkbox" id="__nav_2" checked>
+      <input class="md-nav__toggle md-toggle " data-md-toggle="__nav_2" type="checkbox" id="__nav_2" >
       
       
         
@@ -405,8 +397,8 @@
       
         
         
-        <div class="md-nav__link md-nav__link--index md-nav__link--active">
-          <a href="./">LLM-Training</a>
+        <div class="md-nav__link md-nav__link--index ">
+          <a href="../../">LLM-Training</a>
           
             <label for="__nav_2">
               <span class="md-nav__icon md-icon"></span>
@@ -429,7 +421,7 @@
   
   
     <li class="md-nav__item">
-      <a href="zero-offload/zero-offload/" class="md-nav__link">
+      <a href="../../zero-offload/zero-offload/" class="md-nav__link">
         ZeRO-Offload
       </a>
     </li>
@@ -443,7 +435,7 @@
   
   
     <li class="md-nav__item">
-      <a href="gemini/gemini/" class="md-nav__link">
+      <a href="../../gemini/gemini/" class="md-nav__link">
         Gemini
       </a>
     </li>
@@ -477,6 +469,48 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    介绍
+  </a>
+  
+    <nav class="md-nav" aria-label="介绍">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    摘要
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    引言与背景
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    设计与实现
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -495,22 +529,65 @@
 
 
 
-<h1 id="llm-training">LLM Training<a class="headerlink" href="#llm-training" title="Permanent link">&para;</a></h1>
-<p>刚开始接触 LLM 训练，这里做一些论文笔记与整理。</p>
+<h1 id="checkfreq-frequent-fine-grained-dnn-checkpointing">CheckFreq: Frequent, Fine-Grained DNN Checkpointing<a class="headerlink" href="#checkfreq-frequent-fine-grained-dnn-checkpointing" title="Permanent link">&para;</a></h1>
+<div class="admonition abstract">
+<p class="admonition-title">Abstract</p>
+<p><img alt="" src="../fig/author-list.png" /></p>
 <ul>
-<li><a href="zero-offload/zero-offload/">ZeRO-Offload: Democratizing Billion-Scale Model Training</a></li>
+<li>
+<p>Paper: <a href="https://www.usenix.org/system/files/fast21-mohan.pdf">CheckFreq: Frequent, Fine-Grained DNN Checkpointing</a></p>
+</li>
+<li>
+<p><strong>FAST'21</strong></p>
+</li>
 </ul>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>读到一半感觉这个异步的设计太初步了（毕竟是很早的论文），后边的内容并没有仔细阅读。暂时搁置。</p>
+</div>
+<h2 id="_1">介绍<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<h3 id="_2">摘要<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h3>
+<p>这是一篇比较老的训练优化论文，主要内容是设计了两阶段检查点来将计算和 IO 进行重叠，以减少检查点带来的运算暂停与性能损失。</p>
+<p>检查点是将显存中的参数与优化器状态写到持久存储中，减少系统故障带来影响的技术。传统的检查点技术会在特定的 epoch（即所有训练数据均参与一次）后<strong>暂停</strong>训练，并将显存中的状态写入到持久存储中。<strong>CheckFreq</strong> 是一个自动配置的、细粒度的检查点技术，它可以：</p>
+<ol>
+<li>通过算法自动决定写检查点的频率。</li>
+<li>在运行时动态调整检查点频率以控制检查点带来的额外开销。</li>
+<li>保证每轮使用的训练数据一致。</li>
+<li>设计了两阶段流水的检查点技术，将运算与 IO 进行一定程度的重叠，降低检查点带来的额外开销。</li>
+</ol>
+<p>实验证明在不同的模型及实验平台上可以将复原时间从“小时”降低到“秒”，同时检查点带来的运行时开销在 3.5% 以内。</p>
+<h3 id="_3">引言与背景<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
+<p>DNN 训练通常耗时很久，因此模型参数以及优化器状态等通常需要隔一段时间写入到持久存储中以减少系统崩溃时的恢复代价，这样的技术被称为<strong>检查点(checkpointing)</strong>，传统的检查点技术发生在某次 epoch 后。在训练过程中时常发生系统故障，有工作表明训练任务的故障间平均时长(mean time between failure, MTBF)为 4-22 小时。随着训练数据和模型复杂度提高，每一 epoch 的间隔时间越来越长，这也导致检查点间隔时间更长，系统崩溃时需要的时间更长。</p>
+<p>CheckFreq 希望通过迭代(iteration)粒度的检查点来减少系统崩溃时的恢复代价。需要解决的问题与 CheckFreq 的设计简述如下：</p>
+<ol>
+<li>
+<p>如何确定写检查点的<strong>频率</strong>。合适的写检查点频率与模型、训练平台（如存储带宽）有关，并非一成不变的。CheckFreq 在运行时通过获取任务的特征来确定一个初始的写频率(systematic online profiling)，同时根据环境影响动态调整写检查点的间隔时间(adaptive rate runing)。</p>
+</li>
+<li>
+<p>写检查点时的训练<strong>暂停</strong>。因为每个训练迭代中都会有状态改变，因此训练需要在写检查点时暂停，来保证将现在的状态写到持久存储中，暂停过程中 GPU 没有进行下一轮运算，如果简单的提高写检查点的频率会极大影响训练效率。CheckFreq 为 DNN 训练设计了两阶段的检查点策略，即<strong>快照(snapshot)与持久化(persist)</strong>两阶段。快照阶段中 CheckFreq 流水地在内存中拷贝所有参数；持久化阶段将快照阶段获得的拷贝异步写入到持久存储中。</p>
+</li>
+<li>
+<p>每轮使用的训练数据保持一致。每个 epoch 都应该将所有训练数据以随机顺序处理正好一次。若以 iteration 为单位写检查点，需要在恢复时保证训练不会使用这一 epoch 已处理的数据。</p>
+</li>
+</ol>
+<h2 id="_4">设计与实现<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<p>CheckFreq 的目标是保证检查点正确性（一致且被持久化），自动进行写检查点频率设置，降低写检查点的时间成本，尽可能少的代码修改。</p>
+<p>整体设计如下图，主要构成是可恢复的数据迭代器（向训练任务返回 minibatch 的数据），接收反馈的协议判断（决定是否触发一次写检查点）以及两阶段的写检查点机制（快照与持久化）。</p>
+<p><img alt="" src="../fig/design.png" /></p>
+<p>CheckFreq 的最大特征是<strong>对存储的异步写</strong>，实现的途径是在快照阶段先将 GPU 中的模型状态拷贝到 CPU memory 中。关注到仅有在参数更新阶段才会改变模型状态，因此可以将数据搬运与下一轮 GPU 运算进行重叠，减少写检查点带来的 stall 时间。文中提到 GPU 到 CPU 的数据传输可能成为关键路径（耗时较长），可以使用显存来暂时放置，在持久化阶段再异步地先搬运到 CPU 再写入硬盘。</p>
+<p><img alt="" src="../fig/pipeline-graph.png" /></p>
 
   <hr>
 <div class="md-source-file">
   <small>
     
       最后更新:
-      <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-datetime">2024年12月9日 21:49:49</span>
+      <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-datetime">2025年2月17日 14:25:09</span>
       
         <br>
         创建日期:
-        <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-datetime">2024年12月9日 21:49:49</span>
+        <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-datetime">2025年2月17日 14:25:09</span>
       
     
   </small>
@@ -625,16 +702,16 @@
       <div class="md-dialog__inner md-typeset"></div>
     </div>
     
-    <script id="__config" type="application/json">{"base": "..", "features": ["content.code.annotate", "navigation.tracking", "navigation.tabs", "navigation.indexes", "navigation.top"], "search": "../assets/javascripts/workers/search.e5c33ebb.min.js", "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}}</script>
+    <script id="__config" type="application/json">{"base": "../../..", "features": ["content.code.annotate", "navigation.tracking", "navigation.tabs", "navigation.indexes", "navigation.top"], "search": "../../../assets/javascripts/workers/search.e5c33ebb.min.js", "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}}</script>
     
     
-      <script src="../assets/javascripts/bundle.ba449ae6.min.js"></script>
+      <script src="../../../assets/javascripts/bundle.ba449ae6.min.js"></script>
       
-        <script src="../js/baidu-tongji.js"></script>
+        <script src="../../../js/baidu-tongji.js"></script>
       
         <script src="https://gcore.jsdelivr.net/npm/katex@0.15.1/dist/katex.min.js"></script>
       
-        <script src="../js/katex.js"></script>
+        <script src="../../../js/katex.js"></script>
       
         <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
       
