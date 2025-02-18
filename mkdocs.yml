@@ -112,4 +112,5 @@ nav:
   - LLM-Training:
     - llm-training/index.md
     - ZeRO-Offload: llm-training/zero-offload/zero-offload.md
+    - Gemini: llm-training/gemini/gemini.md
     # - ZeRO: Paper/ZeRO.md
