@@ -633,3 +633,160 @@ int minCameraCover(TreeNode* root) {
 		return min(choose_this, by_child);
 }
 ```
+
+## 1155. 掷骰子等于目标和的方法数
+
+[题目链接](https://leetcode.cn/problems/number-of-dice-rolls-with-target-sum/description/)
+
+```
+这里有 n 个一样的骰子，每个骰子上都有 k 个面，分别标号为 1 到 k 。
+
+给定三个整数 n、k 和 target，请返回投掷骰子的所有可能得到的结果（共有 kn 种方式），使得骰子面朝上的数字总和等于 target。
+
+由于答案可能很大，你需要对 109 + 7 取模。
+```
+
+比较明显是一个动态规划问题，为了求 `dp[i][j]`（其含义为有 `i` 个骰子和为 `j` 的情况总个数）可以使用 `dp[i-1][j-k...j-1]` 的总和计算得到：即增加一个骰子其对总和的影响是 `1...k`，几个特殊条件也比较好思考：
+
+- 当 `i==0` 时有 `dp[0][j] = (j == 0) ? 1 : 0`
+- 当 `j==0` 时有 `dp[i][0] = (i == 0) ? 1 : 0`
+
+代码如下，其实还能更简化，我只需要持有一个 `sum` 以及一个 `arr[k]` 即可，使用 `sum` 进行窗口内总和的统计，使用 `arr[k]` 判断即将出窗口的数量是多少，但是这样会增加代码的复杂度，对于算法题来说意义不大，故没有完成。
+
+```cpp
+#define MOD_NUM (1000000000 + 7)
+class Solution {
+public:
+    int sum_of_pre_k(std::vector<int>& arr, int j, int k) {
+      int sum = 0;
+      for(int i = j-k; i < j; ++i) {
+        if(i >= 0) sum += arr[i];
+        sum %= MOD_NUM;
+      }
+      return sum;
+    }
+    int numRollsToTarget(int n, int k, int target) {
+      if(target <= 0 || n <= 0 || k <= 0) return 0;
+      std::vector<int> arr(target + 100, 0);
+      std::vector<int> arr_new(target+100, 0);
+      arr[0] = 1;
+      for(int i = 1; i <= n; ++i) {
+        for(int j = 1; j <= target; ++j) {
+          arr_new[j] = sum_of_pre_k(arr, j, k);
+        }
+        arr = std::move(arr_new);
+        arr_new.assign(target+100, 0);
+      }
+
+      return arr[target];
+    }
+};
+```
+
+## 1995. 统计特殊四元组
+
+[题目链接](https://leetcode.cn/problems/count-special-quadruplets/description/)
+
+```
+给你一个 下标从 0 开始 的整数数组 nums ，返回满足下述条件的 不同 四元组 (a, b, c, d) 的 数目 ：
+
+- nums[a] + nums[b] + nums[c] == nums[d] ，且
+
+- a < b < c < d
+```
+
+主要限制点在于 abcd 下标各不相同且递增，不能通过排序/建立 mapping 的方法压缩加/减的查询数量，即题目几乎只能用遍历的方式来找，主要的目标是减少遍历维度，进而压缩复杂度。
+
+注意到要求的限制也可以写为 `nums[a] + nums[b] == nums[d] - nums[c]`，且 `a<b<c<d` 那么其实可以 `b` 为轴，进行遍历（`b \in [0, n-3]`），并用 hash 记录大于 `b` 的 `c, d` 相减的值，那么总体思路就可以写成：
+
+- 在 `[1, n-3]` 遍历 `b`
+    - 在 `[b+1, n-1]` 遍历 `c, d`，这里有一个点是逆序遍历 `b`，这样的话可以固定一端 `c`，从 `[b+2, n-1]` 遍历 `d` 即可，因为 `c > b+1` 的情况已经在之前遍历过了。获取 `counter[nums[d]-nums[c]]`
+    - 在 `[0, b-1]` 遍历 `a`，只需要利用 `counter` 查询 `nums[a]+nums[b]` 的值，即可获得所有 `nums[a]+nums[b] == nums[d]-nums[c]` 的情况数了
+
+```cpp
+class Solution {
+public:
+    int countQuadruplets(vector<int>& nums) {
+      if(nums.size() < 4) return 0; 
+      int n = nums.size();
+      std::unordered_map<int, int> m;
+      int res = 0;
+      for(int b = n-3; b >= 1; b--) {
+        // build cnt map for (num[d] - num[c] for d > c > b)
+        for(int d = n-1; d > b+1; --d) {
+          m[nums[d] - nums[b+1]]++;
+        }
+
+        for(int a = 0; a < b; ++a) {
+          if(m.count(nums[a] + nums[b])) res += m[nums[a] + nums[b]];
+        }
+      }
+      return res;
+    }
+};
+
+```
+## 2560. 打家劫舍 IV
+
+[题目链接](https://leetcode.cn/problems/house-robber-iv/description/)
+
+```
+沿街有一排连续的房屋。每间房屋内都藏有一定的现金。现在有一位小偷计划从这些房屋中窃取现金。
+
+由于相邻的房屋装有相互连通的防盗系统，所以小偷 不会窃取相邻的房屋 。
+
+小偷的 窃取能力 定义为他在窃取过程中能从单间房屋中窃取的 最大金额 。
+
+给你一个整数数组 nums 表示每间房屋存放的现金金额。形式上，从左起第 i 间房屋中放有 nums[i] 美元。
+
+另给你一个整数 k ，表示窃贼将会窃取的 最少 房屋数。小偷总能窃取至少 k 间房屋。
+
+返回小偷的 最小 窃取能力。
+```
+
+第一次遇到类似的题目，参考了[题解](https://leetcode.cn/problems/house-robber-iv/solutions/2093952/er-fen-da-an-dp-by-endlesscheng-m558/)才最终理解。
+
+这是一个“最小化最大值”的题目，即对于“找到一个 k 长度的子序列，得到子序列最大值”这个问题求解最小值。对于“最大化最小值”或者“最小化最大值”的题目可以利用二分法夹逼最终的答案。
+
+比如对于本题，可以定义一个函数 `f(i, val)` 其含义为 `nums[0...i]` 中偷不超过 `val` 价值的房屋，最多能偷几间。下面讨论 val 固定时，`f(i)` 的解法，显然可以用动态规划完成，即当不选择偷第 `i` 房间时 `f(i) = f(i-1)`；而当 `nums[i] <= val` 可以进行选择时，则 `f(i) = max(f(i-1), f(i-2)+1)`，即可选偷本房间或不偷，不偷则和前例相同，偷则可以比 `f(i-2)` 刚好多偷一间房屋。
+
+利用上述方法，可以获得 `f(n-1, val)` 的值，这个值的含义就是可以从所有房屋中选择，偷取价值不超过 `val` 的房间，最多能偷多少间。
+
+在获得这个值之后，可以开始考虑二分查找的方式和边界变动条件了。借用题解的一句话说，二分查找的本质是“一般地，二分的值越小，越不能/能满足要求；二分的值越大，越能/不能满足要求。有单调性的保证，就可以二分答案了。”对于本题，我们取中点值 `mid`，若 `f(n-1, mid) >= k` 则代表着最终的答案最多为 `mid`（为了获取可能的更小的值，我们需要把右边界划到 `mid`），反之则代表答案一定超过 `mid`（因为这种情况下我们只偷 `mid` 以下的房子，是偷不到目标 `k` 的，需要把左边界划到 `mid`）。
+
+有了这些分析，已经能够写出代码了。但是对于二分查找的规范写法，之前并没有思考过，导致二分的边界时常出问题，这里也总结一下基本的二分查找写法：首先需要认识到二分查找的边界含义（对于相邻终止模板为 `left+1 < right` 的情形），`left` 始终是不满足条件的最大值（对于题目就是 `val <= left` 时，无法偷到 `k` 间），而 `right` 始终是满足条件的最小值（当 `val >= right` 时，总能偷够 `k` 间），这种情况下，进行边界收缩需要以 `left=mid or right=mid` 进行，因为我们总能判断出 `mid` 能否满足/不满足条件，而不确定 `mid-1 or mid+1` 能否满足条件。
+
+```cpp
+class Solution {
+public:
+    int minCapability(vector<int>& nums, int k) {
+        int left = 0, right;
+        right = *std::max_element(nums.begin(), nums.end());
+        while(left + 1 < right) {
+          int mid = (left + right) / 2;
+          // check the result, f2 for f(i-2), f1 for f(i-1), f for f(i)
+          int f2 = 0, f1 = 0;
+          for(int i = 0; i < nums.size(); ++i) {
+            if(nums[i] > mid) {
+              // for next iter 
+              f2 = f1;
+            } else {
+              int max = std::max(f1, f2+1);
+              f2 = f1; f1 = max;
+            }
+          }
+          if(f1 >= k) {
+            right = mid;
+          } else {
+            left = mid;
+          }
+        }
+        return right;
+    }
+};
+```
+```
+```
+
+
+```
