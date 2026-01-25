@@ -19,8 +19,7 @@ while True:
 	while r in done_set or r in ignore_set or r in todo_set:
 		r = randrange(1, TOTAL_NUM)
 	print(r)
-	print('Page', (r-1)//50+1)
-	print('https://leetcode.cn/problemset/?page={}'.format((r-1)//50+1))
+	print('https://leetcode.cn/search/?q={}'.format(r)
 	choice = input('[y]es, [n]o, [i]gnore, [t]odo or [b]reak\n')
 	if choice.strip() == 'y':
 		with open(done_filename, 'a') as f:
