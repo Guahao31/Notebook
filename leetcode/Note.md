@@ -946,3 +946,114 @@ public:
 
 在完成并查集的实现后，本题就变成纯粹的体力劳动了。
 
+```cpp
+class Solution {
+public:
+    enum Street {
+      lr = 1,
+      ud,
+      ld,
+      rd,
+      lu,
+      ru
+    };
+ 
+    class DSU {
+      public:
+        std::vector<int> _parent;
+        int _n;
+        DSU(int n) {
+          _n = n;
+          _parent.assign(_n, 0);
+          for(int i = 0; i < _n; ++i) {
+            _parent[i] = i;
+          }
+        }
+        int find(int x) {
+          int root = x;
+          while(root != _parent[root]) {
+            root = _parent[root];
+          }
+          while(x != _parent[x]) {
+            int next = _parent[x];
+            _parent[x] = root;
+            x = next;
+          }
+          return root;
+        }
+        int unite(int x, int y){
+          int rootX = find(x);
+          int rootY = find(y);
+          if(rootX != rootY) {
+            _parent[rootX] = rootY;
+          }
+          return rootY;
+        }
+    };
+
+    int m;
+    int n;
+
+    inline int get_idx(int x, int y) { 
+      return x*n+y;
+    }
+
+    void touchU(DSU &dsu, std::vector<std::vector<int>> &grid, int x, int y) {
+      if(x <= 0) return;
+      int t = grid[x-1][y];
+      if(t == ud || t == ld || t == rd) {
+        dsu.unite(get_idx(x-1, y), get_idx(x, y));
+      }
+    }
+
+    void touchD(DSU &dsu, std::vector<std::vector<int>> &grid, int x, int y) {
+      if(x >= m-1) return;
+      int t = grid[x+1][y];
+      if(t == ud || t == ru || t == lu) {
+        dsu.unite(get_idx(x+1, y), get_idx(x, y));
+      }
+    }
+
+    void touchR(DSU &dsu, std::vector<std::vector<int>> &grid, int x, int y) {
+      if(y >= n-1) return;
+      int t = grid[x][y+1];
+      if(t == lr || t == ld || t == lu) {
+        dsu.unite(get_idx(x, y+1), get_idx(x, y));
+      }
+    }
+
+    void touchL(DSU &dsu, std::vector<std::vector<int>> &grid, int x, int y) {
+      if(y <= 1) return;
+      int t = grid[x][y-1];
+      if(t == lr || t == ru || t == rd) {
+        dsu.unite(get_idx(x, y-1), get_idx(x, y));
+      }
+    }
+
+    void check(std::vector<std::vector<int>> &grid, DSU &dsu, int x, int y) {
+      switch(grid[x][y]) {
+        case lr: touchL(dsu, grid, x, y); touchR(dsu, grid, x, y); break;
+        case ud: touchU(dsu, grid, x, y); touchD(dsu, grid, x, y); break;
+        case ld: touchL(dsu, grid, x, y); touchD(dsu, grid, x, y); break;
+        case rd: touchR(dsu, grid, x, y); touchD(dsu, grid, x, y); break;
+        case lu: touchL(dsu, grid, x, y); touchU(dsu, grid, x, y); break;
+        case ru: touchR(dsu, grid, x, y); touchU(dsu, grid, x, y); break;
+      }
+    }
+
+    bool hasValidPath(vector<vector<int>>& grid) {
+        m = grid.size();
+        n = grid[0].size();
+        DSU dsu(m*n);
+        bool res = false;
+        for(int i = 0; i < m; ++i) {
+          for(int j = 0; j < n; ++j) {
+            check(grid, dsu, i, j);
+          }
+        }
+        return dsu.find(get_idx(0, 0)) == dsu.find(get_idx(m-1, n-1));
+    }
+};
+```
+
+## aaa
