@@ -822,8 +822,99 @@ public:
     }
 };
 ```
+
+## 576. 出界的路径数
+
+[题目链接](https://leetcode.cn/problems/out-of-boundary-paths/description/)
+
+**Keywords:** 动态规划
 ```
 ```
 
+```
+给你一个大小为 m x n 的网格和一个球。球的起始坐标为 [startRow, startColumn] 。你可以将球移到在四个方向上相邻的单元格内（可以穿过网格边界到达网格之外）。你 最多 可以移动 maxMove 次球。
 
+给你五个整数 m、n、maxMove、startRow 以及 startColumn ，找出并返回可以将球移出边界的路径数量。因为答案可能非常大，返回对 109 + 7 取余 后的结果。
+```
+
+比较明显是一个动态规划问题，这个动态规划问题可以拆分为两维：一维是移动的步数，另一维是一个矩阵。综合来看，可以用一个三维 dp 来描述，对于 `dp[k][i][j]` 其含义是动 `k` 步之后，能够到达位置 `(i, j)` 的路径数量。其特殊情况是第 0 步时，即 `dp[0]`，只有开始点有一个路径（站着不动）能达到，矩阵上的其他位置都是 0，即 `dp[0][i][j] = (i == startRow && j == startColumn) ? 1 : 0`。
+
+之后考虑 `dp[k]` 应该怎么由之前的状态 `dp[k-1]` 获得，可以简单发现，对于 `(i, j)` 来说，只有上一步在 `(i-1, j), (i+1, j), (i, j-1), (i, j+1)` 这四个位置的路径可以走一步到达。我们可以获得递推式 `dp[k][i][j] = dp[k-1][i-1][j] + dp[k-1][i+1][j] + dp[k-1][i][j-1] + dp[k-1][i][j+1]`，当然，需要注意在边界上的点可能会缺少其中的某一项或某几项，其本质是因为出界的所有路径都不会再回来，这也是对正确性的保证。
+
+在得到 `dp` 后，我们可以将 `dp[k]` 矩阵的边界上的所有数据进行加和，得到再走一步就能出界的路径数量，需要注意，四角上的点都各有两个选择，因此应该记录两遍。
+
+对于这个题目，得到 `dp` 以后还不能直接完成，因为我们的答案是走 `[1, maxMove]` 步能出界的路径数，而不只是走 `maxMove` 步出界的路径数。因此在每走一步之前，都需要统计下来矩阵的额边界值之和，即最终的答案是 `sum(sum_boundary) for step in [0, maxMove-1]`。
+
+同时还有几个特别情况需要特殊处理：
+
+- 当 `maxMove == 0` 时，答案一定是 0
+
+- 当 `m == 1, n == 1` 时，只要 `maxMove > 0` 就有且只有 4 个路径能出界
+
+- 当 `m == 1, n > 1` 时，边界上的两个点有三个方向可以出界，`m > 1, n == 1` 时同理
+
+```cpp
+#define MOD_NUM (1000000000+7)
+
+class Solution {
+public:
+    long long int sum_mid_state(std::vector<std::vector<long long int>> &dp, int m, int n) {
+      long long int sum = 0;
+
+      if(m == 1) {
+        for(int j = 1; j < n-1; ++j) sum += 2 * dp[0][j], sum %= MOD_NUM;
+        sum += 3 * dp[0][0], sum %= MOD_NUM, sum += 3 * dp[0][n-1], sum %= MOD_NUM;
+        return sum;
+      }
+      if(n == 1) {
+        for(int i = 1; i < m-1; ++i) sum += 2 * dp[i][0], sum %= MOD_NUM;
+        sum += 3 * dp[0][0], sum %= MOD_NUM, sum += 3 * dp[m-1][0], sum %= MOD_NUM;
+        return sum;
+      }
+
+      for(int i = 1; i < m-1; ++i) sum += dp[i][0], sum %= MOD_NUM, sum += dp[i][n-1], sum %= MOD_NUM;
+      for(int j = 1; j < n-1; ++j) sum += dp[0][j], sum %= MOD_NUM, sum += dp[m-1][j], sum %= MOD_NUM;
+      sum += 2 * dp[0][0], sum %= MOD_NUM, sum += 2 * dp[0][n-1], sum %= MOD_NUM;
+      sum += 2 * dp[m-1][0], sum %= MOD_NUM, sum += 2 * dp[m-1][n-1], sum %= MOD_NUM;
+
+      return sum;
+    }
+    int findPaths(int m, int n, int maxMove, int startRow, int startColumn) {
+      if(m == 1 && n == 1) return 4;
+      if(maxMove <= 0) return 0;
+      std::vector<std::vector<long long int>> dp_new;
+      std::vector<std::vector<long long int>> dp;
+      long long int res = 0;
+      dp.resize(m); for(int i = 0; i < m; ++i) dp[i].assign(n, 0);
+      dp_new.resize(m); for(int i = 0; i < m; ++i) dp_new[i].assign(n, 0);
+
+      dp[startRow][startColumn] = 1;
+      for(int k = 0; k < maxMove-1; ++k) {
+        res += sum_mid_state(dp, m, n);
+        res %= MOD_NUM;
+        for(int i = 0; i < m; ++i) {
+          for(int j = 0; j < n; ++j) {
+            long long int sum = 0;
+            if(i > 0) sum += dp[i-1][j], sum %= MOD_NUM;
+            if(j > 0) sum += dp[i][j-1], sum %= MOD_NUM;
+            if(i < m-1) sum += dp[i+1][j], sum %= MOD_NUM;
+            if(j < n-1) sum += dp[i][j+1], sum %= MOD_NUM;
+            
+            dp_new[i][j] = sum;
+          }
+        }
+
+        std::swap(dp_new, dp);
+      }
+
+      res += sum_mid_state(dp, m, n);
+      res %= MOD_NUM;
+
+      return res;
+    }
+};
+```
+
+## aaa
+```
 ```
