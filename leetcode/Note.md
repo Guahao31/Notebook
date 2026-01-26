@@ -4,6 +4,8 @@
 
 [题目链接](https://leetcode.cn/problems/k-inverse-pairs-array/)
 
+**Keywords:** 动态规划
+
 ```
 对于一个整数数组 nums，逆序对是一对满足 0 <= i < j < nums.length 且 nums[i] > nums[j]的整数对 [i, j] 。
 
@@ -57,6 +59,8 @@ int kInversePairs(int n, int k) {
 
 [题目链接](https://leetcode.cn/problems/count-equal-and-divisible-pairs-in-an-array)
 
+**Keywords:** 数组技巧
+
 ```
 给你一个下标从 0 开始长度为 n 的整数数组 nums 和一个整数 k ，请你返回满足 0 <= i < j < n ，nums[i] == nums[j] 且 (i * j) 能被 k 整除的数对 (i, j) 的 数目 。
 ```
@@ -91,6 +95,8 @@ int countPairs(vector<int>& nums, int k) {
 
 [题目链接](https://leetcode.cn/problems/extra-characters-in-a-string)
 
+**Keywords:** 动态规划；字典树
+
 ```
 给你一个下标从 0 开始的字符串 s 和一个单词字典 dictionary 。你需要将 s 分割成若干个 互不重叠 的子字符串，每个子字符串都在 dictionary 中出现过。s 中可能会有一些 额外的字符 不在任何子字符串中。
 
@@ -121,6 +127,8 @@ int minExtraChar(string s, vector<string>& dictionary) {
 ## 1447. 最简分数
 
 [题目链接](https://leetcode.cn/problems/simplified-fractions)
+
+**Keywords:** 埃筛
 
 ```
 给你一个整数 n ，请你返回所有 0 到 1 之间（不包括 0 和 1）满足分母小于等于  n 的 最简 分数 。分数可以以 任意 顺序返回。
@@ -174,6 +182,8 @@ vector<string> simplifiedFractions(int n) {
 ## 782. 变为棋盘
 
 [题目链接](https://leetcode.cn/problems/transform-to-chessboard/)
+
+**Keywords:** 位运算；矩阵
 
 ```
 一个 n x n 的二维网络 board 仅由 0 和 1 组成 。每次移动，你能任意交换两列或是两行的位置。
@@ -267,6 +277,8 @@ int movesToChessboard(vector<vector<int>>& board) {
 
 [题目链接](https://leetcode.cn/problems/maximum-strong-pair-xor-ii)
 
+**Keywords:** 哈希；位运算
+
 完全没有做出来的题目，最开始的想法是从低位开始遍历，寻找尽可能多的位不同的点，但找不到能将复杂度降到 `O(N^2)` 的方法。参考[题解](https://leetcode.cn/problems/maximum-strong-pair-xor-ii/solutions/2523213/0-1-trie-hua-dong-chuang-kou-pythonjavac-gvv2/)才做出来。
 
 思路与刚才提到的部分一致，但是应该从高位开始，依次尝试最终答案 `res` 能否为 `1`。尝试的过程就是根据当前的 `res`（低位均为 `0`）与数组进行异或，得到的结果在一个 Hashmap 中查找，这个 Hashmap 记录了掩码后的值（使低位为 `0`）与本身的映射。在每个数值的位宽为常数时，这个算法的复杂度为 `O(NlogN)`。
@@ -303,6 +315,8 @@ int maximumStrongPairXor(vector<int>& nums) {
 ## 481. 神奇字符串
 
 [题目链接](https://leetcode.cn/problems/magical-string/)
+
+**Keywords:** 双指针
 
 ```
 神奇字符串 s 仅由 '1' 和 '2' 组成，并需要遵守下面的规则：
@@ -355,6 +369,8 @@ int magicalString(int n) {
 
 [题目链接](https://leetcode.cn/problems/smallest-range-ii/)
 
+**Keywords:** 贪心
+
 ```
 给你一个整数数组 nums，和一个整数 k 。
 
@@ -386,6 +402,8 @@ int smallestRangeII(vector<int>& nums, int k) {
 
 [题目链接](https://leetcode.cn/problems/check-if-number-is-a-sum-of-powers-of-three/)
 
+**Keywords:** 数学
+
 ```
 给你一个整数 n ，如果你可以将 n 表示成若干个不同的三的幂之和，请你返回 true ，否则请返回 false 。
 
@@ -406,7 +424,10 @@ bool checkPowersOfThree(int n) {
 ```
 
 ## 1278. 分割回文串 III
+
 [题目链接](https://leetcode.cn/problems/palindrome-partitioning-iii/)
+
+**Keywords:** 动态规划
 
 ```
 给你一个由小写字母组成的字符串 s，和一个整数 k。
@@ -458,6 +479,8 @@ int palindromePartition(string s, int k) {
 
 [题目链接](https://leetcode.cn/problems/distinct-subsequences/)
 
+**Keywords:** 动态规划
+
 ```
 给你两个字符串 s 和 t ，统计并返回在 s 的 子序列 中 t 出现的个数，结果需要对 109 + 7 取模。
 ```
@@ -504,6 +527,8 @@ int numDistinct(string s, string t) {
 
 [题目链接](https://leetcode.cn/problems/length-of-longest-subarray-with-at-most-k-frequency/)
 
+**Keywords:** 哈希；滑动窗口
+
 ```
 给你一个整数数组 nums 和一个整数 k 。
 
@@ -544,6 +569,10 @@ int maxSubarrayLength(vector<int>& nums, int k) {
 ```
 
 ## 2850. 将石头分散到网格图的最少移动次数
+
+[题目链接](https://leetcode.cn/problems/minimum-moves-to-spread-stones-over-grid/)
+
+**Keywords:** 广度优先搜索
 
 ```
 给你一个大小为 3 * 3 ，下标从 0 开始的二维整数矩阵 grid ，分别表示每一个格子里石头的数目。网格图中总共恰好有 9 个石头，一个格子里可能会有 多个 石头。
@@ -593,6 +622,8 @@ int minimumMoves(vector<vector<int>>& grid) {
 
 [题目链接](https://leetcode.cn/problems/binary-tree-cameras/)
 
+**Keywords:** 树形动态规划；动态规划
+
 ```
 给定一个二叉树，我们在树的节点上安装摄像头。
 
@@ -637,6 +668,8 @@ int minCameraCover(TreeNode* root) {
 ## 1155. 掷骰子等于目标和的方法数
 
 [题目链接](https://leetcode.cn/problems/number-of-dice-rolls-with-target-sum/description/)
+
+**Keywords:** 动态规划
 
 ```
 这里有 n 个一样的骰子，每个骰子上都有 k 个面，分别标号为 1 到 k 。
@@ -687,6 +720,8 @@ public:
 
 [题目链接](https://leetcode.cn/problems/count-special-quadruplets/description/)
 
+**Keywords:** 哈希；构造
+
 ```
 给你一个 下标从 0 开始 的整数数组 nums ，返回满足下述条件的 不同 四元组 (a, b, c, d) 的 数目 ：
 
@@ -729,6 +764,8 @@ public:
 ## 2560. 打家劫舍 IV
 
 [题目链接](https://leetcode.cn/problems/house-robber-iv/description/)
+
+**Keywords:** 二分查找；动态规划；最小化最大值
 
 ```
 沿街有一排连续的房屋。每间房屋内都藏有一定的现金。现在有一位小偷计划从这些房屋中窃取现金。
