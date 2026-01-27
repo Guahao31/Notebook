@@ -1056,4 +1056,66 @@ public:
 };
 ```
 
+## 188. 买卖股票的最佳时机 IV
+
+[题目链接](https://leetcode.cn/problems/best-time-to-buy-and-sell-stock-iv/description/)
+
+**Keywords:** 动态规划
+
+```
+给你一个整数数组 prices 和一个整数 k ，其中 prices[i] 是某支给定的股票在第 i 天的价格。
+
+设计一个算法来计算你所能获取的最大利润。你最多可以完成 k 笔交易。也就是说，你最多可以买 k 次，卖 k 次。
+
+注意：你不能同时参与多笔交易（你必须在再次购买前出售掉之前的股票）。
+```
+
+比较明显能够看出是要用动态规划解决的问题，但是这道题目 dp 的构造需要一些灵感。。。
+
+构造的核心在于题目要求同一时刻至多只能持有 1 股，自然划分了两个状态：持有股票和不持有股票。把这个划分搞清楚之后，剩下的问题就比较简单了，剩余的影响因素只有天数和交易次数了（以一次买入+一次卖出为一次交易）。可以得到一个三维的 dp 数组 `dp[i][j][0/1]` 其表示第 `i` 天操作过 `j` 次交易的情况下，当前不持有股票(`0`)和持有股票(`1`)的最大收益值。
+
+先分析状态转移，对于不持有股票的情况 `dp[i][j][0]`，它可以由前一天也不持有股票且今天不买入(`dp[i-1][j][0]`)以及前一天持有股票且今天卖出(`dp[i-1][j-1][1] + prices[i]`)中的最大值决定，注意其中 `j` 的含义是经过这一手操作后（比如这里的卖出）是否构成了多一轮买入卖出；类似的，`dp[i][j][1] = max(dp[i-1][j][1], dp[i-1][j][0] - prices[i])`。其初始状态为 `dp[0][0][0] = 0, dp[0][0][1] = -prices[0]` 表示第 0 天是否操作买入（不操作则无变动，买入则有 `prices[0]` 的支出），`dp` 其他的数值为 `INF(INT_MIN)` 表示一个当前不可到达的状态。
+
+关注到第 `i` 天的`dp` 完全由前一天(`i-1`)决定，因此可以将第一维消除，减少空间占用（`O(nk) -> O(k)`）。为了方便描述，将 `i-1` 的状态描述为 `dp_old`，第 `i` 天的状态描述为 `dp_new`，可以简单的获得最终的状态转移：
+
+- `dp_new[j][0] = max( dp_old[j][0], dp_old[j-1][1] + prices[i] )`
+
+- `dp_new[j][1] = max( dp_old[j][1], dp_old[j][0] - prices[i] )`
+
+- 初始状态 `dp_old[0][0]=0, dp_old[0][1]=-prices[0], dp=-INF otherwise`
+
+```cpp
+class Solution {
+public:
+#define MY_INT_MIN (-10000000000)
+    int maxProfit(int k, vector<int>& prices) {
+      std::vector<int> dp_new_0, dp_new_1, dp_old_0, dp_old_1;
+      dp_old_0.assign(k+1, MY_INT_MIN);
+      dp_old_1.assign(k+1, MY_INT_MIN);
+      dp_new_0.resize(k+1);
+      dp_new_1.resize(k+1);
+
+      dp_old_0[0] = 0;
+      dp_old_1[0] = -prices[0];
+
+      for(int i = 1; i < prices.size(); ++i) {
+        std::fill(dp_new_0.begin(), dp_new_0.end(), MY_INT_MIN);
+        std::fill(dp_new_1.begin(), dp_new_1.end(), MY_INT_MIN);
+        for(int j = 0; j <= k; ++j) {
+          dp_new_0[j] = dp_old_0[j];
+          dp_new_1[j] = std::max(dp_old_1[j], dp_old_0[j] - prices[i]);
+          if(j >= 1) {
+            dp_new_0[j] = std::max(dp_old_0[j], dp_old_1[j-1] + prices[i]);
+          }
+        }
+        std::swap(dp_new_0, dp_old_0);
+        std::swap(dp_new_1, dp_old_1);
+      }
+
+      int res = *std::max_element(dp_old_0.begin(), dp_old_0.end());
+      return res;
+    }
+};
+```
+
 ## aaa
