@@ -1160,6 +1160,74 @@ public:
 };
 ```
 
+## 28. 找出字符串中第一个匹配项的下标
 
+[题目链接](https://leetcode.cn/problems/find-the-index-of-the-first-occurrence-in-a-string/description/)
+
+**Keywords:** 字符串匹配；KMP
+
+学习了 [KMP(Knuth-Morris-Pratt) 算法](https://en.wikipedia.org/wiki/Knuth%E2%80%93Morris%E2%80%93Pratt_algorithm)，它可以将首个子字符串匹配的时间复杂度下降到 `O(m+n)` 其中 `m` 为文本（下称 S, string）长度 `n` 为模式字符串（下称 P, pattern）长度。其本质可以从引用的 wiki 学习，这里只做一些简述和流程说明。
+
+KMP 的核心是是用 `next` 数组降低模式匹配失败时回退的代价，其中 `next` 数组表示的是模式字符串 `P[0...j-1]` 的最长相等真前缀和真后缀的长度。构建方式如下：
+
+- 初始化 `next` 为 `P.length` 长度，`next[0]=-1, k=-1, j=0`，其中 `k` 代表当前最长相等真前后缀的长度（初始为 -1 是因为对于空串来说不存在真前缀和真后缀）`j` 代表当前处理的模式字符串下标。
+
+- 进入循环，退出条件是 `j == P.length()-1`
+    - `if k==-1 or P[k]==P[j]` -> `k++, j++, next[j]=k`
+    - `else` -> `k=next[k]`
+
+得到 `next` 数组后，就可以开始匹配过成了，该过程最多遍历 `S` 一遍：
+
+- 初始化 `i=0, j=0` 其中 `i` 指向文本，`j` 指向模式字符串
+
+- 进入循环，退出条件是 `i==S.length or j==P.length`
+    - `if j==-1 or S[i]==P[j]` -> `i++, j++`，其中 `j==-1` 的条件是因为当 `j==-1` 时其前一迭代一定是 `S[i]!=P[j]` 无法完成前缀匹配，因此可以直接对 `i, j` 进行移动
+    - `else` -> `j=next[j]`，这里就是利用 `next` 回退到上一个模式匹配的子串位置，而不需要移动 `i`
+- 结束循环后，若 `j == P.length` 则意味着匹配成功，第一个匹配到的子字符串下标从 `i-j` 开始；否则就是没有匹配的子字符串
+
+特别需要注意一点，这里被 C 语言的特性小坑了一下，在最终模式匹配的时候，我原本用 `while(i < s.length() && j < p.length())` 来作为循环条件，但是关注到 `j` 是可能到 `-1` 的，而 `std::string.length()` 返回的类型为 `size_t(unsigned)`，表达式 `j < p.length()` 的两个操作数会被 cast 到 `size_t`，此时 `j < 0` 会被解释为最大的 `unsigned int`，因此退出了循环。这里需要把第二个条件修改为 `j < (int)p.length()` 确保不发生隐性 cast。这个坑之前工程里是踩过的，这里又犯一次，有必要详细说明。（虽然之后大概率还是会忘掉就是了xD）
+
+```cpp
+class Solution {
+public:
+    int strStr(string haystack, string needle) {
+        std::string &s = haystack;
+        std::string &p = needle;
+        //get next
+        std::vector<int> next;
+        next.resize(p.length());
+        next[0] = -1;
+        {
+            int k = -1, j = 0;
+            while(j < (int)p.length()-1) {
+                if(k == -1 || p[j] == p[k]) {
+                    k++; j++; 
+                    if(j < p.length()) {
+                        next[j] = k;
+                    }
+                } else {
+                    k = next[k];
+                }
+            }
+        }
+
+        printf("next:");
+        for(auto const& a: next) printf(" %d", a); printf("\n");
+
+        // Using next to match the string
+        int i = 0, j = 0;
+        while(i < s.length() && j < (int)p.length()) {
+            printf("%d %d -> ", i, j);
+            if(j == -1 || s[i] == p[j]) {
+                i++; j++;
+            } else {
+                j = next[j];
+            }
+            printf("%d %d\n", i, j);
+        }
+        return (j == p.length()) ? i-j : -1;
+    }
+};
+```
 
 ## aaa
