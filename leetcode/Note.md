@@ -1118,4 +1118,48 @@ public:
 };
 ```
 
+## 2139. 得到目标值的最少行动次数
+
+[题目链接](https://leetcode.cn/problems/minimum-moves-to-reach-target-score/description/)
+
+**Keywords:** 模拟；逆推
+
+```你正在玩一个整数游戏。从整数 1 开始，期望得到整数 target 。
+
+在一次行动中，你可以做下述两种操作之一：
+
+递增，将当前整数的值加 1（即， x = x + 1）。
+加倍，使当前整数的值翻倍（即，x = 2 * x）。
+在整个游戏过程中，你可以使用 递增 操作 任意 次数。但是只能使用 加倍 操作 至多 maxDoubles 次。
+
+给你两个整数 target 和 maxDoubles ，返回从 1 开始得到 target 需要的最少行动次数。
+```
+
+题目绝对算不得难，但是最近动态规划入脑，这题目拿到手第一印象竟然是去设计 dp 。。。
+
+我们最终目的是拿到 target，而很明显，double 这个操作越到后面越有用，那么在逆推的情况下（即从 `target` 而不是从 `1`）开始模拟，double 这个操作越早发生越好，即 `target` 为偶数的时候，就直接 double，其他情况下自减。需要注意当 double 数量用完后，直接退出循环即可，因为此时的答案已经产生，后续只能通过自减来到达 `1`。
+
+```cpp
+class Solution {
+public:
+    int minMoves(int target, int maxDoubles) {
+        int res = 0;
+        int double_cnt = 0;
+        while(target > 1 && maxDoubles) {
+            if(target % 2 == 0) {
+                target >>= 1;
+                --maxDoubles;
+            }
+            else {
+                --target;
+            }
+            res++;
+        }
+        return res + target-1;
+    }
+};
+```
+
+
+
 ## aaa
