@@ -109,6 +109,6 @@ Tokenizer 是数据准备&模型输入输出阶段需要使用的组件，它在
 
 这个问题由 Embedding 层的引入来解决，大模型的第一层通常是对输入进行 Embedding，所谓的 embedding 就是将 token 进行向量化，从正数索引变为一个向量，经过输入 embedding 之后，我们的字符串就会变为一个矩阵了，而这个矩阵的获得就是由一个 token 查表得到的浮点向量构成。这个矩阵还需要引入“位置”的概念之后，送到后续层参与计算，这个位置编码就是后边学习的内容（比如 RoPE 来解决的）。在所有中间层计算结束后，我们会得到一个最终的结果向量，将这个结果向量和最后输出 embedding 层（或者叫 `lm_head`）相乘，获得一个和词法表大小相同的向量，这个向量代表着接下来输出每个 token 的概率，经过筛选后得到索引，并用这个索引从 tokenizer 查表得到最终的输出字符串。
 
-输入/输出 embedding 层就是之前所说和词法表大小相关的层，它们的大小都是 $[V, D_m]$。
+输入/输出 embedding 层就是之前所说和词法表大小相关的层，它们的大小都是 $[V, D_m]$。需要注意，它们在大模型训练过程中都是可训练的。
 
 至此我们可以理清数据格式的变化：`text(string) --tokenizer--> interger list --InputEmbedding--> X matrix --HiddenLayers--> Output Vector --OutputEmbedding--> Float vector --softmax--> index of output token --detokenizer--> output string`。
