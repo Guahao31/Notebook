@@ -170,3 +170,128 @@ RoPE 为什么会成为现在模型的标准呢？主要是因为以下特性：
 - 长文本外推性，对于绝对位置编码来说，训练过程设置的文本长度为 2048 那么模型就只能推理长度 2048；而 RoPE 应用后训练时 2048 却能外推到推理 4096 甚至更多的上下文长度，且性能下降平缓
 - 显存与计算高效，可以看到它不需要维护一个巨大的可训练参数，而只需要长期保持两个 $D_h$ 长度的 sin cos 表，并且直接作用于 Q K 不会破坏 Attention 的计算结构，从而可以适配原版 FlashAttention
 
+### FFN
+
+FFN(Feed-Forward Network) 也是 Transformer 的重要组成部分，它占据了模型参数量的一大部分。一个经典的 Transformer 块组成为 `Input -> Attention -> Add&Norm -> **FFN** -> Add&Norm -> Output`，其中 Attention 由上述内容可知主要是关注词与词之间的关系，而 FFN 就主要负责消化这些信息，并检索在训练中学到的静态知识。
+
+FFN 主要有经典（MLP）和现代（SwiGLU）两大种结构。下面分别进行介绍：
+
+**MLP(Multi-Layer Perceptron, 多层感知机)**
+
+在原始的 Transformer 论文和早期架构 BERT、GPT-2 等结构中均使用了 MLP 作为其 FFN 的实现。它的结构由两层线性变换（先升维、再降维）和夹在中间的一个激活函数构成，流程是 `input x -> Up_Proj -> Activation(ReLU/GELU) -> Down_Proj -> output x_out`，其中升维使用的矩阵 $W_{up}$ 基本都是大小 $[D_{model}, 4D_{model}]$，而降维矩阵 $W_{down}$ 的大小对应为 $[4D_{model}, D_{model}]$。其中激活层不需要独立的可训练的矩阵，它是对升维后的矩阵进行一个逐 element 计算。
+
+MLP 是一个 memory bound 的过程，比如激活层它对矩阵中每个元素进行一个简单运算后就不再使用，无法利用 cache，因此通常会将 MLP 的升维和激活进行一个融合，这里简单介绍一下：对于一个简单的升维+激活操作 $ReLU(X\cdot W + b)$ 如果不经设计，整个操作可能经过多个对 HBM 的读写（GEMM 写出、Bias 读取/写出、ReLU 读取/写出），而没有充分利用 GPU 内存层级中的寄存器这个访问最快的介质。如果在 kernel 中要求计算完第一个升维的矩阵乘法+bias 参算+每个元素的 ReLU 计算后，再写回中间矩阵中，充分利用 cache 层，减少显存带宽占用。
+
+优化前的 HBM 读写：
+
+```mermaid
+graph TD
+    X[Input HBM] --> GEMM1[GEMM W_gate]
+    GEMM1 --> HBM_Gate[HBM Temp Gate]
+    X --> GEMM2[GEMM W_up]
+    GEMM2 --> HBM_Up[HBM Temp Up]
+    
+    HBM_Gate & HBM_Up --> Act[Element-wise Kernel]
+    Act --> HBM_Inter[HBM Intermediate]
+    
+    HBM_Inter --> GEMM3[GEMM W_down]
+    GEMM3 --> Out[Output HBM]
+```
+
+优化后的 HBM 读写：
+
+```mermaid
+graph TD
+    X[Input HBM] --> FusedGEMM[Fused GEMM + ReLU + Mul]
+    FusedGEMM -- 这里必须写回 --> HBM_Inter[HBM Intermediate]
+    HBM_Inter --> GEMM2[GEMM W_down]
+    GEMM2 --> Out[Output HBM]
+```
+
+**引入门控的 FFN（以 SwiGLU为例）**
+
+MLP 是对输入进行了一个简单的升维、激活、降维过程，而以 SwiGLU 为代表的架构引入了“门控”机制，以 SwiGLU 为例，它增加了一个 GLU(Gated Linear Unit) 表现为一个门控矩阵 $W_{gate}$，它的操作是参算输入与这个矩阵的乘 $Gate = x \cdot W_{gate}$，之后用升维后的矩阵和 sigmoid 后的门控值进行一个筛选 $Content \odot Sigmoid(Gate)$，若 Gate 的输出是 1 则 content 全部通过，若 Gate 的输出是 0.5 则减半通过，若输出为 0 则拦截（其中 $\odot$ 的操作是矩阵中对应位置元素相乘）。
+
+总结来看，SwiGLU 就是激活层用 sigmoid 再加上一个门控矩阵的 FFN，其公式可以描述为 $SwiGLU(x) = (SiLU(x\cdot W_{gate}) \odot (x\cdot W_{up})) \cdot W_{down}$。新增的门控矩阵 $W_{gate}$ 为其带来了更强的特征筛选能力，可以使得模型动态地决定每一层应该保留什么知识，但是也引入了一个问题——它比 MLP 多了一个同样巨大的矩阵，这导致中间层的维度通常不能像 MLP 一样设置为 4，因为这会使得模型参数量爆增，因此通常来说会设置一个魔法数 $\frac{8}{3}\approx 2.667D_{model}$ 作为其中间维度大小。（这个魔法数的计算就是对标标准 MLP，中间层大小为 $4D_{model}$ 的每层 FFN 大小得来的）当然为了在计算的时候对齐，通常在这个值的前后找到一个 `128/256` 的倍数，用来对齐 GPU 内存和 Tensor Core。
+
+### 残差连接
+
+早期的网络中数据是一层一层直接传下去的 $y=F(x)$，而残差连接就是在输出的时候将输入也加入进来形成 $y = x + F(x)$，这样做将 $F(x)$ 从结果变成了对输入的变化量。一个直观的理解是，不加入残差连接的情况下，模型就像在一层层传话，可能传着传着意思就变了，最初的信息就没有了；而加入残差连接后，不过经过多少层，最初的信息都还存在在每一层的输出中，类似于每一层都对一个草稿增加修改意见，而不是整个覆写。
+
+引入残差连接是因为它的关键能力：解决“梯度消失”的问题，我不想深入了解这部分内容，所以只做一些直观理解。残差连接提供了一个反向传播中的快速道路，在链式法则下，梯度的传递是一个连续的乘法 $G_{final}\times G_n \times \dots G_1$，如果中间的层有一些阻碍（比如导数值小于 1），那么乘了 100 次之后，整个梯度值就会很小很小（接近 0），导致前面的层根本不会被训练，而加入残差连接后，梯度变为了 $\frac{\partial{y}}{\partial{x}} = 1 + \frac{\partial{F}}{\partial x}$，这个 1 的引入使得连续的乘法中每一个部分都至少在绝对值上有一个 1 的通道，不会因为连乘导致前面的层收不到梯度变化的信息。
+
+同时残差连接使得如果一层对任务没有帮助，它可以将权重训练为 0，使得 $y=x$，这比学习一个恒等映射更容易，起码保证了随着层数的加深，模型的能力至少不会变差。
+
+### 归一化
+
+
+
+### 总结来看
+
+```mermaid
+graph TD
+    %% 定义样式
+    classDef tensor fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef op fill:#fff9c4,stroke:#fbc02d,stroke-width:2px;
+    classDef param fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+    classDef stream fill:#f3e5f5,stroke:#7b1fa2,stroke-width:4px;
+
+    %% 输入（彻底移除所有括号，纯文本描述维度）
+    Input[输入张量 X 大小 B, S, D_model]:::tensor --> Fork1
+
+    %% =======================
+    %% Part 1: Attention Block
+    %% =======================
+    
+    %% 残差流的主干道 (高速公路)
+    Fork1 --> |残差流 直连| Add1[+]:::stream
+
+    %% 支路：Attention 计算
+    Fork1 --> RMS1[RMS归一化]:::op
+    
+    subgraph Attention_Module [Attention 模块]
+        direction TB
+        RMS1 --> QKV_Proj[线性层 QKV 投影]:::param
+        
+        QKV_Proj -- Q --> RoPE_Q[RoPE 旋转位置编码注入]:::op
+        QKV_Proj -- K --> RoPE_K[RoPE 旋转位置编码注入]:::op
+        QKV_Proj -- V --> FA_Calc
+        
+        RoPE_Q --> FA_Calc[FlashAttention <br/> Softmax QK转置 乘 V]:::op
+        
+        FA_Calc --> Out_Proj[线性层 输出投影 W_o]:::param
+    end
+
+    Out_Proj --> Add1
+    
+    %% =======================
+    %% Part 2: FFN Block
+    %% =======================
+
+    %% 残差流的主干道 (高速公路)
+    Add1 --> |残差流 直连| Add2[+]:::stream
+    
+    %% 支路：FFN 计算
+    Add1 --> RMS2[RMSNorm]:::op
+
+    subgraph FFN_Module [FFN / SwiGLU 模块]
+        direction TB
+        RMS2 --> Gate_Proj[线性层 门控投影 W_g <br/> 升维]:::param
+        RMS2 --> Up_Proj[线性层 升维投影 W_u <br/> 升维]:::param
+        
+        Gate_Proj --> Act[激活函数 SiLU]:::op
+        
+        Act --> Mul[X]:::op
+        Up_Proj --> Mul
+        
+        Mul --> |中间张量| Down_Proj[线性层 降维投影 W_d <br/> 降维]:::param
+    end
+
+    Down_Proj --> Add2
+
+    %% 输出
+    Add2 --> Output[输出张量 <br/> 传入下一层]:::tensor
+
+    %% 样式应用
+    linkStyle 1,11 stroke:#7b1fa2,stroke-width:3px;
+```
