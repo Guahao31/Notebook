@@ -716,4 +716,25 @@ class LlamaDecoderLayer(GradientCheckpointingLayer):
         return hidden_states
 ```
 
-###
+### 其他
+
+modeling_llama 中还有几个类，会在各个模型中都出现类似的命名，这里做一下汇总。
+
+```
+PreTrainedModel (Hugging Face 通用预训练基类)
+    ↓ 继承
+LlamaPreTrainedModel (Llama 系列专属基类)
+    ↓ 继承               ↓ 继承
+LlamaModel (Llama 主干网络)    LlamaForCausalLM (完整因果语言模型)
+                                   ↑ 组合（内部包含 LlamaModel 实例）
+```
+
+`PreTrainedModel` 是 llama 系列的通用基类，用来封装模型的通用配置和底层特性，不能直接实例化，而是作为父类为其他类提供继承。
+
+`LlamaModel` 是主干网络，decode-only 的架构，它提供了从输入 token 到 hidden state 的处理逻辑，但没有预测头 LM Head，不能直接做生成或训练。
+
+`LlamaForCausalLM` 提供完整的殷国语言模型（训练和生成）。内部封装了 `LlamaModel` 作为主干网络，并新增了 `lm_head` 层将最后一层输出的 hidden state 映射到词汇表，支持在训练中计算模型的 loss，以及生成文本（即 `generate` 方法）。
+
+其实这部分内容也挺重要的，但是写在 note 里比较累赘，可以直接看源码，和之前描述的 Transformer 模型（注意不是 block）的处理逻辑完全一致，经过一层 input_embedding 后，经过若干 Transformer Layers，之后，经过 lm head 获得输出（或进一步计算 loss）。
+
+
