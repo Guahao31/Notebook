@@ -495,4 +495,146 @@ def apply_rotary_pos_emb(q, k, cos, sin, unsqueeze_dim=1):
 
 可以看到，实际上这里的 rope 实现并不是像我们之前说的相邻两个维度配对，而是相隔 $D//2$ 的维度配对（比如 hidden_size=8 时，(0, 4), (1, 5)), ... 是相互配对的），但是这并不会影响我们之前所说的效果，重点在于 $\theta_i$ 的不同。
 
+### Attention
+
+modeling_llama.py 使用了支持多头注意力实现，并通过 `ALL_ATTENTION_FUNCTIONS` 提供了多种 attention 实现（包括 flashattention、pafedattention 等），这里先跳过对具体 attention 实现的阅读，在后面系统优化章节再详细学习 [modeling_utils.py](https://github.com/huggingface/transformers/blob/main/src/transformers/modeling_utils.py#L4711)。
+
+```python
+def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
+    """
+    This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep). The hidden states go from (batch,
+    num_key_value_heads, seqlen, head_dim) to (batch, num_attention_heads, seqlen, head_dim)
+    """
+    # 将传入的 k/v tensor 注意力头的维度进行拓展，需要注意，这里并不是“广播”，而是确实申请了更大的内存
+    batch, num_key_value_heads, slen, head_dim = hidden_states.shape
+    if n_rep == 1:
+        return hidden_states
+    # 这里使用 expand，只是在 tensor 视图上逻辑拓展，并没有分配更大的内存空间
+    hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
+    # 这里返回时 reshape，确实分配了更大的内存空间
+    return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
+
+def eager_attention_forward(
+    module: nn.Module,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attention_mask: torch.Tensor | None,
+    scaling: float,
+    dropout: float = 0.0,
+    **kwargs: Unpack[TransformersKwargs],
+):
+    # 是最简单的 attention 实现，看起来对应了之前所学的 GQA
+    # 在 modeling_llama 中用于找不到 ATTENTION_INTERFACE 时的 default 实现
+
+    # 为 k v 进行拓展，用来匹配后续计算的维度
+    # 注意，这里是确实对 k v 进行了拓展，占用了更大的显存，目的是为了后续 matmul 的时候维度匹配
+    key_states = repeat_kv(key, module.num_key_value_groups)
+    value_states = repeat_kv(value, module.num_key_value_groups)
+
+    # QK^T 计算
+    attn_weights = torch.matmul(query, key_states.transpose(2, 3)) * scaling
+    if attention_mask is not None:
+        # 自回归模式下，当前的 token 只会关注自己和之前的 token，而不去关注后边的内容
+        # 需要设置一个 mask 来将这个 token 后边的所有 token 设置一个极大的负数，使得 softmax 之后的权重趋近于 0
+        causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
+        # attention mask 是用来做 padding 掩码的，即部分 seq 并没有到处理的 seq_len，而为了计算维度匹配
+        # 需要填充一些废值，而这些废值显然也是不应该被关注的，和 causal_mask 处理一样
+        attn_weights = attn_weights + causal_mask
+    
+    # 对 Score 先 softmax，再乘以 V，注意这里在 softmax 后加入了一个 dropout 层
+    # 会使得随机部分的权重“失活”，防止模型过拟合
+    attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query.dtype)
+    attn_weights = nn.functional.dropout(attn_weights, p=dropout, training=module.training)
+    attn_output = torch.matmul(attn_weights, value_states)
+    # 恢复输出的维度顺序，并保证内存上的连续性
+    attn_output = attn_output.transpose(1, 2).contiguous()
+
+    return attn_output, attn_weights
+
+
+@use_kernelized_func(apply_rotary_pos_emb)
+class LlamaAttention(nn.Module):
+    """Multi-headed attention from 'Attention Is All You Need' paper"""
+
+    def __init__(self, config: LlamaConfig, layer_idx: int):
+        super().__init__()
+        self.config = config
+        self.layer_idx = layer_idx
+        # 每头的维度
+        self.head_dim = getattr(config, "head_dim", config.hidden_size // config.num_attention_heads)
+        # 分组组数，这里用了 GQA 的实现
+        self.num_key_value_groups = config.num_attention_heads // config.num_key_value_heads
+        self.scaling = self.head_dim**-0.5
+        self.attention_dropout = config.attention_dropout
+        self.is_causal = True
+
+        # 对应之前说过的，并没有为每个头分别设置 W_Q/K/V，而是合并运算之后再拆分头，使其计算合并为大的矩阵运算
+        self.q_proj = nn.Linear(
+            config.hidden_size, config.num_attention_heads * self.head_dim, bias=config.attention_bias
+        )
+        self.k_proj = nn.Linear(
+            config.hidden_size, config.num_key_value_heads * self.head_dim, bias=config.attention_bias
+        )
+        self.v_proj = nn.Linear(
+            config.hidden_size, config.num_key_value_heads * self.head_dim, bias=config.attention_bias
+        )
+        # W_O
+        self.o_proj = nn.Linear(
+            config.num_attention_heads * self.head_dim, config.hidden_size, bias=config.attention_bias
+        )
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        position_embeddings: tuple[torch.Tensor, torch.Tensor] | None = None,
+        attention_mask: torch.Tensor | None = None,
+        past_key_values: Cache | None = None,
+        cache_position: torch.LongTensor | None = None,
+        **kwargs: Unpack[TransformersKwargs],
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        input_shape = hidden_states.shape[:-1]
+        hidden_shape = (*input_shape, -1, self.head_dim)
+
+        # 设置拆分注意力头后的维度
+        query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+
+        # RoPE 注入位置信息
+        cos, sin = position_embeddings
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+        # 现在 QK 已经有了位置信息
+
+        if past_key_values is not None:
+            # sin and cos are specific to RoPE models; cache_position needed for the static cache
+            # 看起来是在判断当前 cache 的 rope 支持序列长度有没有被打破，查看是否需要更新
+            cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
+            key_states, value_states = past_key_values.update(key_states, value_states, self.layer_idx, cache_kwargs)
+
+        # 根据配置的 attention 类型，从已经实现的接口中提出来对应实现，如果没有找到，就 fallback 到上边的 eager_attention 实现
+        attention_interface: Callable = ALL_ATTENTION_FUNCTIONS.get_interface(
+            self.config._attn_implementation, eager_attention_forward
+        )
+
+        # 进行 QKV 参与的运算，上述内容已经介绍，注意其中 QK 已经被注入了 rope 的位置信息
+        attn_output, attn_weights = attention_interface(
+            self,
+            query_states,
+            key_states,
+            value_states,
+            attention_mask,
+            dropout=0.0 if not self.training else self.attention_dropout,
+            scaling=self.scaling,
+            **kwargs,
+        )
+
+        # 返回前进行 reshape 并确保内存上的连续性，之后与 W_O 相乘得到结果返回
+        attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+        attn_output = self.o_proj(attn_output)
+        return attn_output, attn_weights
+```
+
+### MLP
+
 
