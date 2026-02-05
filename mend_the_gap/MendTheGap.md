@@ -635,6 +635,85 @@ class LlamaAttention(nn.Module):
         return attn_output, attn_weights
 ```
 
-### MLP
+### SwiGLU 
 
+modeling_llama 给了一个简单的 GLU 实现（虽然名字是 MLP，但其实带门控，行为和 SwiGLU 相同）作为其 FFN 层，几乎完全按照之前介绍的 MLP 顺序来算的，具体激活函数实现在 [actications.py](https://github.com/huggingface/transformers/blob/main/src/transformers/activations.py#L342)。
 
+```python
+class LlamaMLP(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+        self.hidden_size = config.hidden_size
+        self.intermediate_size = config.intermediate_size
+        # 分别是门控、升维、降维矩阵
+        self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=config.mlp_bias)
+        self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=config.mlp_bias)
+        self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=config.mlp_bias)
+        self.act_fn = ACT2FN[config.hidden_act]
+
+    def forward(self, x):
+        # 这里的计算顺序是先门控，然后对门控的结果做激活函数运算
+        # 用升维后的结果和上述计算做筛选（实际上是在 0-1 之间对升维后的数据做 scale）
+        # 最后将结果降维，得到最终的输出
+        down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
+        return down_proj
+```
+
+### Transformer Block
+
+上边把核心组件都进行了阅读，最后有一个 forward 将它们串起来，即一层 Decoder。
+
+```python
+class LlamaDecoderLayer(GradientCheckpointingLayer):
+    def __init__(self, config: LlamaConfig, layer_idx: int):
+        super().__init__()
+        # 这里设置了一层 Transformer Block 的所有组件，包括 Attention、MLP、LayerNorm
+        self.hidden_size = config.hidden_size
+
+        self.self_attn = LlamaAttention(config=config, layer_idx=layer_idx)
+
+        self.mlp = LlamaMLP(config)
+        self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: torch.Tensor | None = None,
+        position_ids: torch.LongTensor | None = None,
+        past_key_values: Cache | None = None,
+        use_cache: bool | None = False,
+        cache_position: torch.LongTensor | None = None,
+        position_embeddings: tuple[torch.Tensor, torch.Tensor] | None = None,
+        **kwargs: Unpack[TransformersKwargs],
+    ) -> torch.Tensor:
+        # 可以看到 llama 的 Transformer Layer 处理顺序是
+        # 对输入 x 先进行 Norm 处理（这里虽然叫 layernorm，但根据 init 可知其实是 RMSNorm 的实现）
+        # 进行 self attention 之后，进行残差连接，并在进行一次 Norm
+        # 之后进行 SwiGLU 计算，最后再进行一次残差连接，最后返回结果
+    
+        residual = hidden_states
+        hidden_states = self.input_layernorm(hidden_states)
+        # Self Attention
+        hidden_states, _ = self.self_attn(
+            hidden_states=hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_values=past_key_values,
+            use_cache=use_cache,
+            cache_position=cache_position,
+            position_embeddings=position_embeddings,
+            **kwargs,
+        )
+        hidden_states = residual + hidden_states
+
+        # Fully Connected
+        residual = hidden_states
+        hidden_states = self.post_attention_layernorm(hidden_states)
+        hidden_states = self.mlp(hidden_states)
+        hidden_states = residual + hidden_states
+        return hidden_states
+```
+
+###
