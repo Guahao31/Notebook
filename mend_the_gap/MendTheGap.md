@@ -332,3 +332,167 @@ graph TD
     %% 样式应用
     linkStyle 1,11 stroke:#7b1fa2,stroke-width:3px;
 ```
+
+### 源码阅读
+
+阅读 [HuggingFace Transformer](https://github.com/huggingface/transformers) 的 [llama/modeling_llama.py](https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py)，对应一下之前所学的内容，主要想法是跟着 Transformer Block 的计算过程，理一下每个子模块的计算模式，只是从 python 这一层应该是看不到对具体计算/访存的优化了。
+
+#### RMSNorm
+
+```python
+@use_kernel_forward_from_hub("RMSNorm")
+class LlamaRMSNorm(nn.Module):
+    def __init__(self, hidden_size, eps=1e-6):
+        # eps 即 epsilon，用于确保不会除零
+        """
+        LlamaRMSNorm is equivalent to T5LayerNorm
+        """
+        super().__init__()
+        # Norm 层需要有一个一维向量的参数，可学习
+        # 可以看到它的 shape 就是 (hidden_size) 或者说我们之前的 D_model
+        self.weight = nn.Parameter(torch.ones(hidden_size))
+        self.variance_epsilon = eps
+
+    def forward(self, hidden_states):
+        input_dtype = hidden_states.dtype
+        # 这一层计算的时候使用 fp32 的精度
+        hidden_states = hidden_states.to(torch.float32)
+        # 这一步是先计算每个参数的平方，mean 即计算平方的均值，最终的结果就是 RMS(x)^2
+        variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        # rsqrt 是逆平方根，等价于 1/\sqrt(RMS(x)^2 + epsilon)
+        # 这里 epsilon 作用的地方和上文略有差异，不过区别不大，都是保证分母不为 0
+        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        # 返回前将类型恢复（混精训练时可能是 fp16 bf16 等）
+        return self.weight * hidden_states.to(input_dtype)
+
+    def extra_repr(self):
+        return f"{tuple(self.weight.shape)}, eps={self.variance_epsilon}"
+```
+
+#### RoPE
+
+更多的 RoPE 相关 utils 在 [modeling_rope_utils.py](https://github.com/huggingface/transformers/blob/main/src/transformers/modeling_rope_utils.py)中。
+
+```python
+class LlamaRotaryEmbedding(nn.Module):
+    inv_freq: torch.Tensor  # fix linting for `register_buffer`
+
+    def __init__(self, config: LlamaConfig, device=None):
+        super().__init__()
+        # 设置最长处理的 seq 长度
+        # 区别在于 max_seq_len_cached 会动态变化，当处理的序列长度不超过这个值是可以直接复用 rope 之前处理的数据
+        # 当超过这个值时，会进行动态更新，并同时修改所有 rope 所需的 cache 内容
+        self.max_seq_len_cached = config.max_position_embeddings
+        self.original_max_seq_len = config.max_position_embeddings
+
+        self.config = config
+
+        self.rope_type = self.config.rope_parameters["rope_type"]
+        # 调取不同的 rope 初始化方法，详见引用的 modeling_rope_utils
+        rope_init_fn: Callable = self.compute_default_rope_parameters
+        if self.rope_type != "default":
+            rope_init_fn = ROPE_INIT_FUNCTIONS[self.rope_type]
+        # inv_freq 即后面计算 cos/sin table 所要的角度列表，之后用 sin(inv_freq) 即可获得 sin table
+        inv_freq, self.attention_scaling = rope_init_fn(self.config, device)
+
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
+        self.register_buffer("original_inv_freq", inv_freq.clone(), persistent=False)
+
+    @staticmethod
+    def compute_default_rope_parameters(
+        config: LlamaConfig | None = None,
+        device: Optional["torch.device"] = None,
+        seq_len: int | None = None,
+    ) -> tuple["torch.Tensor", float]:
+        """
+        Computes the inverse frequencies according to the original RoPE implementation
+        Args:
+            config ([`~transformers.PreTrainedConfig`]):
+                The model configuration.
+            device (`torch.device`):
+                The device to use for initialization of the inverse frequencies.
+            seq_len (`int`, *optional*):
+                The current sequence length. Unused for this type of RoPE.
+        Returns:
+            Tuple of (`torch.Tensor`, `float`), containing the inverse frequencies for the RoPE embeddings and the
+            post-processing scaling factor applied to the computed cos/sin (unused in this type of RoPE).
+        """
+        base = config.rope_parameters["rope_theta"]
+        # 即单头维度
+        dim = getattr(config, "head_dim", None) or config.hidden_size // config.num_attention_heads
+
+        attention_factor = 1.0  # Unused in this type of RoPE
+
+        # Compute the inverse frequencies
+        # 分步分析：
+        #  1.0 / ~: 取倒数，对应幂上的负号
+        # base ** : 底为 base，默认 10000，和 rope 能关注的最远位置有关，可以调整
+        # arange(0, dim, 2) 只取偶数索引，即 [0, 2, ..., D//2]
+        # 它对应了一个 D_head//2 大小的角度列表，\theta^i = base^{-2i/D_head}
+        inv_freq = 1.0 / (
+            base ** (torch.arange(0, dim, 2, dtype=torch.int64).to(device=device, dtype=torch.float) / dim)
+        )
+        return inv_freq, attention_factor
+
+    @torch.no_grad()
+    @dynamic_rope_update  # power user: used with advanced RoPE types (e.g. dynamic rope)
+    def forward(self, x, position_ids):
+        # 看起来是 rope 动态调整 cos/sin table 的时候调用的方法，可以用来看它从角度列表到 table 的过程
+        # 扩展维度，从 [D//2] --> [Batch, D//2, 1]
+        inv_freq_expanded = self.inv_freq[None, :, None].float().expand(position_ids.shape[0], -1, 1).to(x.device)
+        # 扩展维度，[Batch, seq_len] --> [Barch, 1, seq_len]
+        position_ids_expanded = position_ids[:, None, :].float()
+
+        device_type = x.device.type if isinstance(x.device.type, str) and x.device.type != "mps" else "cpu"
+        with maybe_autocast(device_type=device_type, enabled=False):  # Force float32
+            # 计算旋转角度 inv_freq x position_ids --> [Batch, D//2, seq_len]
+            # 转置为 [Batch, seq_len, D//2]
+            freqs = (inv_freq_expanded.float() @ position_ids_expanded.float()).transpose(1, 2)
+            # 拼接 freq 完成复用，组成 [theta0, theta1, ..., theta_D//2, theta0, theta1, ..., thetaD//2]
+            emb = torch.cat((freqs, freqs), dim=-1)
+            cos = emb.cos() * self.attention_scaling
+            sin = emb.sin() * self.attention_scaling
+
+        return cos.to(dtype=x.dtype), sin.to(dtype=x.dtype)
+
+
+def rotate_half(x):
+    """Rotates half the hidden dims of the input."""
+    # 对于 x = [x0, x1, ..., x_2k-1]
+    # 处理为 [-x_k, -x_k+2, ..., -x_2k-1, x0, x1, ..., xk-1]
+    x1 = x[..., : x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2 :]
+    return torch.cat((-x2, x1), dim=-1)
+
+
+@use_kernel_func_from_hub("rotary_pos_emb")
+def apply_rotary_pos_emb(q, k, cos, sin, unsqueeze_dim=1):
+    """Applies Rotary Position Embedding to the query and key tensors.
+
+    Args:
+        q (`torch.Tensor`): The query tensor.
+        k (`torch.Tensor`): The key tensor.
+        cos (`torch.Tensor`): The cosine part of the rotary embedding.
+        sin (`torch.Tensor`): The sine part of the rotary embedding.
+        unsqueeze_dim (`int`, *optional*, defaults to 1):
+            The 'unsqueeze_dim' argument specifies the dimension along which to unsqueeze cos[position_ids] and
+            sin[position_ids] so that they can be properly broadcasted to the dimensions of q and k. For example, note
+            that cos[position_ids] and sin[position_ids] have the shape [batch_size, seq_len, head_dim]. Then, if q and
+            k have the shape [batch_size, heads, seq_len, head_dim], then setting unsqueeze_dim=1 makes
+            cos[position_ids] and sin[position_ids] broadcastable to the shapes of q and k. Similarly, if q and k have
+            the shape [batch_size, seq_len, heads, head_dim], then set unsqueeze_dim=2.
+    Returns:
+        `tuple(torch.Tensor)` comprising of the query and key tensors rotated using the Rotary Position Embedding.
+    """
+    # 扩展维度，让 cos/sin table 可以广播到 KV 的维度（适配多头）
+    cos = cos.unsqueeze(unsqueeze_dim)
+    sin = sin.unsqueeze(unsqueeze_dim)
+    # 核心计算
+    q_embed = (q * cos) + (rotate_half(q) * sin)
+    k_embed = (k * cos) + (rotate_half(k) * sin)
+    return q_embed, k_embed
+```
+
+可以看到，实际上这里的 rope 实现并不是像我们之前说的相邻两个维度配对，而是相隔 $D//2$ 的维度配对（比如 hidden_size=8 时，(0, 4), (1, 5)), ... 是相互配对的），但是这并不会影响我们之前所说的效果，重点在于 $\theta_i$ 的不同。
+
+
