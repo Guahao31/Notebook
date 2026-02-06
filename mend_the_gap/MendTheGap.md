@@ -8,11 +8,11 @@
 
 [TOC]
 
-## Transformer
+# Transformer
 
 Transformer 是当前最流行的大模型基本结构，个人认为需要补充学习其基本原理和运算过程（从算法+ infra 角度）。初步计划进行下面这些内容的学习：Attention（从基础的 MHA 到 GQA、MQA）、RoPE、FFN(SwiGLU)、代码阅读（可能 llama2.c）。
 
-### Attention - MHA
+## Attention - MHA
 
 先放公式，对于一个简单的“单头”注意力来说，它的基本运算是 $\text{Attention}(Q, K, V) = \text{softmax}(\frac{QK^{T}}{\sqrt{D_{h}}})V$。下面直观理解一下注意力机制的运算过程：
 
@@ -62,7 +62,7 @@ $$MultiHeadAttention(Q, K, V) = Concat(head_1, head_2, \dots, head_h)W^O$$
 
 我们可以发现，在 MHA 的设计下，每个头都有自己独立的 $K$ 和 $V$，如果每个头其实关注的东西都差不多，那么它们是不是可以进行合并？这就是后边的 MQA 和 GQA 的设计关注点。
 
-### Attention - MQA
+## Attention - MQA
 
 由于 MHA 的处理中，$Q, K, V$ 都有独立的注意力头来分别计算，整个计算过程涉及到大量的访存，（尤其是在推理的 decoding 阶段）将这个计算过程从“计算密集型”向“访存密集型”转移。Google 在 19 年的论文中提出了 MQA(Mutlti-Query Attention) 来解决这个问题，设计的整体思路就是仅保留 $Q$ 的多头，而共用一头的 $K, V$，这样的设计在保留多头注意力整合不同关注的同时，将 decode 过程从 MHA 的访存密集型转移回计算密集型，充分利用 GPU 的计算能力（而不至于被访存卡死）。
 
@@ -76,7 +76,7 @@ $$MultiHeadAttention(Q, K, V) = Concat(head_1, head_2, \dots, head_h)W^O$$
 
 总结来看，MQA 利用 MHA 的冗余性进行压缩，减少对显存的访问（增加 cache 命中率）。对于推理过程，在 encoding 过程没有明显提升，但对于 decoding 阶段有极大提升。其最大优势是提升了推理阶段的吞吐和降低了 decoding 阶段的延迟；而对 encoding 阶段没有特别的好处。
 
-### Attention - GQA
+## Attention - GQA
 
 MHA 显存占用多、访存压力大，而 MQA 则面临 KV 存储信息过少实际效果较差的问题，GQA(Grouped Query Attention) 则是两个方案的折中。它保留了 MHA 和 MQA 对 $Q$ 的处理，即拥有完整的头数，而将 $Q$ 的不同头进行分组，每个组对应一个 $K, V$ 头。比如 $Q$ 有 $H_Q$ 头，分为了 $G$ 组，则 $K, V$ 就各有 $H_{\{K, V\}} = H_Q \div G$ 头。举个例子，$H_Q=32, G=8$ 时，每 4 个 Q 对应一组 K/V，即在运算过程中 $Q_{0\dots 3}, Q_{4\dots 7}\dots Q_{28\dots 31}$ 分别对应 $K_0(V_0), K_1(V_1), \dots, K_7(V_7)$。
 
@@ -94,7 +94,7 @@ GQA 实际上是对模型进行了一种结构化的剪枝，要求模型在训�
 | 推理速度 	|  慢(I/O bound)  	|         快         	|       极快       	|
 | 模型效果 	|       最好      	|      几乎无损      	|    有明显损失    	|
 
-## Tokenizer & Embedding Layers
+# Tokenizer & Embedding Layers
 
 ```
 之前一直以为 Tokenizer 是个很神秘的东西。。。
@@ -115,7 +115,7 @@ Tokenizer 是数据准备&模型输入输出阶段需要使用的组件，它在
 
 至此我们可以理清数据格式的变化：`text(string) --tokenizer--> interger list --InputEmbedding--> X matrix --HiddenLayers--> Output Vector --OutputEmbedding--> Float vector --softmax--> index of output token --detokenizer--> output string`。
 
-### 位置编码 - RoPE
+## 位置编码 - RoPE
 
 首先需要理解为什么大模型需要进行位置编码，比如这句话：“我被狗咬了”。在没有位置编码的情况下，模型只能意识到“我”和“狗”的关系（可能也能意识到“咬”这个动词与前面两个名词的关系），但是它对位置并没有严格的理解，在它的处理模式中这句话和“狗被我咬了”没有什么区别。因此我们需要为模型添加一个**位置的信息**。
 
@@ -172,7 +172,7 @@ RoPE 为什么会成为现在模型的标准呢？主要是因为以下特性：
 - 长文本外推性，对于绝对位置编码来说，训练过程设置的文本长度为 2048 那么模型就只能推理长度 2048；而 RoPE 应用后训练时 2048 却能外推到推理 4096 甚至更多的上下文长度，且性能下降平缓
 - 显存与计算高效，可以看到它不需要维护一个巨大的可训练参数，而只需要长期保持两个 $D_h$ 长度的 sin cos 表，并且直接作用于 Q K 不会破坏 Attention 的计算结构，从而可以适配原版 FlashAttention
 
-### FFN
+## FFN
 
 FFN(Feed-Forward Network) 也是 Transformer 的重要组成部分，它占据了模型参数量的一大部分。一个经典的 Transformer 块组成为 `Input -> Attention -> Add&Norm -> **FFN** -> Add&Norm -> Output`，其中 Attention 由上述内容可知主要是关注词与词之间的关系，而 FFN 就主要负责消化这些信息，并检索在训练中学到的静态知识。
 
@@ -216,7 +216,7 @@ MLP 是对输入进行了一个简单的升维、激活、降维过程，而以 
 
 总结来看，SwiGLU 就是激活层用 sigmoid 再加上一个门控矩阵的 FFN，其公式可以描述为 $SwiGLU(x) = (SiLU(x\cdot W_{gate}) \odot (x\cdot W_{up})) \cdot W_{down}$。新增的门控矩阵 $W_{gate}$ 为其带来了更强的特征筛选能力，可以使得模型动态地决定每一层应该保留什么知识，但是也引入了一个问题——它比 MLP 多了一个同样巨大的矩阵，这导致中间层的维度通常不能像 MLP 一样设置为 4，因为这会使得模型参数量爆增，因此通常来说会设置一个魔法数 $\frac{8}{3}\approx 2.667D_{model}$ 作为其中间维度大小。（这个魔法数的计算就是对标标准 MLP，中间层大小为 $4D_{model}$ 的每层 FFN 大小得来的）当然为了在计算的时候对齐，通常在这个值的前后找到一个 `128/256` 的倍数，用来对齐 GPU 内存和 Tensor Core。
 
-### 残差连接
+## 残差连接
 
 早期的网络中数据是一层一层直接传下去的 $y=F(x)$，而残差连接就是在输出的时候将输入也加入进来形成 $y = x + F(x)$，这样做将 $F(x)$ 从结果变成了对输入的变化量。一个直观的理解是，不加入残差连接的情况下，模型就像在一层层传话，可能传着传着意思就变了，最初的信息就没有了；而加入残差连接后，不过经过多少层，最初的信息都还存在在每一层的输出中，类似于每一层都对一个草稿增加修改意见，而不是整个覆写。
 
@@ -224,7 +224,7 @@ MLP 是对输入进行了一个简单的升维、激活、降维过程，而以 
 
 同时残差连接使得如果一层对任务没有帮助，它可以将权重训练为 0，使得 $y=x$，这比学习一个恒等映射更容易，起码保证了随着层数的加深，模型的能力至少不会变差。
 
-### 归一化
+## 归一化
 
 经过前面的学习，可以发现在 Transformer 的结构中（尤其是多层相连时），广泛使用了残差连接，它会使得每一层都在向之前的输入上夹东西，如果不进行控制，输出数据的方差会越来越大，最终导致梯度爆炸。这需要用归一化 Normalization 进行控制，将传递的数值强行拉回到一个标准的分布中，保证即便在多层网络结构下，数值范围依旧是稳定的。同时，归一化后的数据面更平滑，能支撑在训练时使用更大的学习率，加速模型的收敛。
 
@@ -263,7 +263,7 @@ RMSNorm 的提出者是因为发现 LayerNorm 的收益绝大部分来自于除�
 
 与之前提到的 FFN 将不同算子融合类似，RMSNorm 的计算和前（有时是后）面的 Residual Add 进行融合，减少对显存带宽的压力，提高整体效率。因为 Residual Add 就是简单的对输出结果和输入结果进行加，相当于在 RMS 前进行一次加法操作，而不直接写回到 HBM 中，而是将数据留在 cache 内计算完 RMSNorm 再写回，节省了一次完整的 HBM 读写。
 
-### 总结来看
+## 总结来看
 
 目前已经将 Transformer 最基本的结构和直观上的作用有了初步了解，对部分系统层面的优化也有了理解，现在用一个流程图对上述内容进行总结梳理，方便后边的源码阅读随时查阅：
 
@@ -335,11 +335,11 @@ graph TD
     linkStyle 1,11 stroke:#7b1fa2,stroke-width:3px;
 ```
 
-### 源码阅读
+## 源码阅读
 
 阅读 [HuggingFace Transformer](https://github.com/huggingface/transformers) 的 [llama/modeling_llama.py](https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py)，对应一下之前所学的内容，主要想法是跟着 Transformer Block 的计算过程，理一下每个子模块的计算模式，只是从 python 这一层应该是看不到对具体计算/访存的优化了。
 
-#### RMSNorm
+### RMSNorm
 
 ```python
 @use_kernel_forward_from_hub("RMSNorm")
@@ -371,7 +371,7 @@ class LlamaRMSNorm(nn.Module):
         return f"{tuple(self.weight.shape)}, eps={self.variance_epsilon}"
 ```
 
-#### RoPE
+### RoPE
 
 更多的 RoPE 相关 utils 在 [modeling_rope_utils.py](https://github.com/huggingface/transformers/blob/main/src/transformers/modeling_rope_utils.py)中。
 
@@ -497,7 +497,7 @@ def apply_rotary_pos_emb(q, k, cos, sin, unsqueeze_dim=1):
 
 可以看到，实际上这里的 rope 实现并不是像我们之前说的相邻两个维度配对，而是相隔 $D//2$ 的维度配对（比如 hidden_size=8 时，(0, 4), (1, 5)), ... 是相互配对的），但是这并不会影响我们之前所说的效果，重点在于 $\theta_i$ 的不同。
 
-### Attention
+## Attention
 
 modeling_llama.py 使用了支持多头注意力实现，并通过 `ALL_ATTENTION_FUNCTIONS` 提供了多种 attention 实现（包括 flashattention、pafedattention 等），这里先跳过对具体 attention 实现的阅读，在后面系统优化章节再详细学习 [modeling_utils.py](https://github.com/huggingface/transformers/blob/main/src/transformers/modeling_utils.py#L4711)。
 
@@ -637,7 +637,7 @@ class LlamaAttention(nn.Module):
         return attn_output, attn_weights
 ```
 
-### SwiGLU 
+## SwiGLU 
 
 modeling_llama 给了一个简单的 GLU 实现（虽然名字是 MLP，但其实带门控，行为和 SwiGLU 相同）作为其 FFN 层，几乎完全按照之前介绍的 MLP 顺序来算的，具体激活函数实现在 [actications.py](https://github.com/huggingface/transformers/blob/main/src/transformers/activations.py#L342)。
 
@@ -662,7 +662,7 @@ class LlamaMLP(nn.Module):
         return down_proj
 ```
 
-### Transformer Block
+## Transformer Block
 
 上边把核心组件都进行了阅读，最后有一个 forward 将它们串起来，即一层 Decoder。
 
@@ -718,7 +718,7 @@ class LlamaDecoderLayer(GradientCheckpointingLayer):
         return hidden_states
 ```
 
-### 其他
+## 其他
 
 modeling_llama 中还有几个类，会在各个模型中都出现类似的命名，这里做一下汇总。
 
@@ -739,7 +739,7 @@ LlamaModel (Llama 主干网络)    LlamaForCausalLM (完整因果语言模型)
 
 其实这部分内容也挺重要的，但是写在 note 里比较累赘，可以直接看源码，和之前描述的 Transformer 模型（注意不是 block）的处理逻辑完全一致，经过一层 input_embedding 后，经过若干 Transformer Layers，之后，经过 lm head 获得输出（或进一步计算 loss）。
 
-## KV-Cache
+# KV-Cache
 
 在 LLM 的推理过程中，有两个主要步骤：Prefill 和 Decode，可以将两个阶段直观看作“先冲刺，再马拉松”的过程。
 
