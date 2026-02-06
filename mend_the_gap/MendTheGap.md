@@ -6,6 +6,8 @@
 这里的所有内容充斥着脑补、“俺寻思”和 AI 幻觉，不足以作为学习资料，纯粹个人发癫记录。
 ```
 
+[TOC]
+
 ## Transformer
 
 Transformer 是当前最流行的大模型基本结构，个人认为需要补充学习其基本原理和运算过程（从算法+ infra 角度）。初步计划进行下面这些内容的学习：Attention（从基础的 MHA 到 GQA、MQA）、RoPE、FFN(SwiGLU)、代码阅读（可能 llama2.c）。
