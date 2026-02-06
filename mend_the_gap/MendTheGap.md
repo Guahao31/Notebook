@@ -737,4 +737,46 @@ LlamaModel (Llama 主干网络)    LlamaForCausalLM (完整因果语言模型)
 
 其实这部分内容也挺重要的，但是写在 note 里比较累赘，可以直接看源码，和之前描述的 Transformer 模型（注意不是 block）的处理逻辑完全一致，经过一层 input_embedding 后，经过若干 Transformer Layers，之后，经过 lm head 获得输出（或进一步计算 loss）。
 
+## KV-Cache
+
+在 LLM 的推理过程中，有两个主要步骤：Prefill 和 Decode，可以将两个阶段直观看作“先冲刺，再马拉松”的过程。
+
+Prefill 的主要目的是将输入进行处理，并行计算输入内容的 KV，填入 KV-Cache，并完成第一个 token 的输出。这个过程本质上是在进行上下文理解，并完成初始化 KV-Cache 的任务。其计算模式和之前提到的 Attention 计算流程一致（只不过与训练不同，Prefill 阶段只做前向，而不需要为反向传播做准备，这导致与训练的主要区别是激活值用完就可以丢弃，但需要保存 KV-Cache），这一步只去关心最后一个 token 的 logits 来预测下一个词。Prefill 是明显的 compute bound 过程，其进行的都是大矩阵乘法（比如上文提到的 attention 中数个 [Batch, Seq, heads, d_h] 维度的矩阵运算）。评判 Prefill 的性能指标通常用 TTFT(Time To First Token)。
+
+Decode 的过程是自回归生成，它一次只处理一个 token（用来预测下一个 token 的 logits），计算也从 GEMM 变为了 GEMV(Matrix-Vector Multiply，矩阵-向量乘)，在这种计算模式下，当前 token 的 Q 会和之前所有 token 的 KV 分别进行一次矩阵-向量乘法，为了这一个词的计算，需要将 KV-Cache 中的内容依次载入到计算核心，显存带宽占用大但是计算量却极小。这样的计算模式决定了 Decode 阶段是一个 memory bound 的过程，其特征为大量读取，少量计算和写入。评判其性能指标通常为 TPOT(Time Per Output Token)。
+
+```
+这里需要稍微解释一下自回归模式下的 attention 计算和之前介绍的训练 & Prefill 阶段 Attention 计算的区别。它们都是采用相同类型的计算模式（即计算 $QK^T$，做 $\text{softmax(\cdot)}$，缩放之后乘 $V$），区别在于训练和 Prefill 过程的 Attention 计算中 KV 都是计算所有 token 之间的 score，而 decode 阶段只计算当前一个 token 和之前所有 tokens 的 score。
+
+从计算维度上，训练和 Prefill 阶段的 attention 在做的是 $[Batch, Head, Seq, D_head]$ 之间的矩阵运算，而自回归过程的 attention 计算则是 $[Batch, Head, Seq, D_head]$ 的矩阵与一个 $[Batch, Head, 1, D_head]$ 的向量进行分别计算。
+
+举个例子，假设 seq 长度为 4，输入是 $[A, B, C, D]$，那么训练和 Prefill 阶段的 Attention 计算得到的结果是一个 $4\times 4$ 的矩阵（在 Causal Mask 作用下是一个下三角矩阵，即要求模型在当前 token 计算的时候不能偷看后续 token 来作弊）：
+
+$$
+\begin{bmatrix} Q_A \\ Q_B \\ Q_C \\ Q_D \end{bmatrix} \times \begin{bmatrix} K_A & K_B & K_C & K_D \end{bmatrix} 
+
+=
+
+\begin{bmatrix}
+  A看A & - & - & - \\
+  B看A & B看B & - & - \\
+  C看A & C看B & C看C & - \\
+  D看A & D看B & D看C & D看D \\
+\end{bmatrix}
+$$
+
+而在 decode 阶段的自回归过程，在计算 D 的 score 值时，前面 A,B,C 的 KV 值已经被存储在了 KV-Cache 中，因此可以直接使用，它所做的是一个矩阵-向量乘法，计算模式如下：
+
+$$
+Q_{new} \times K_{cache}^T = \begin{bmatrix}Q_D\end{bmatrix} \times
+\begin{bmatrix} K_A & K_B & K_C & K_D \end{bmatrix} = \begin{bmatrix} D看A & D看B & D看C & D看D \end{bmatrix}
+$$
+
+可以发现，上面的公式算出的一行其实就是标准 Attention 矩阵中的最后一行。
+
+总结来看，训练和 Prefill 的 Attention 是在做全量计算，而 decode 阶段则是进行增量计算。decode 阶段的就是把之前的大矩阵运算，变为了一行一行来算。
+```
+
+在了解了自回归过程后，我们其实就能发现 KV-Cache 为什么存在了（实际上本节开篇就应该先介绍“为什么要有 KV-Cache”这个问题）。在自回归过程中，我们每一步都需要计算当前这个 token 和**之前所有 token** 的 score，那么就需要知道之前所有 token 的 K 值和 V 值（因为 attention 计算中需要），而如果我们不把这些值保存下来的话，在每一个 token 计算时都需要重算之前所有 tokne 的 KV 值，这显然时一个无法承受的代价。因此，KV-Cache 本身的存在是一个必然，而不是精巧设计的结果。
+
 
