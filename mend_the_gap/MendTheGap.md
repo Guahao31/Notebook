@@ -783,4 +783,35 @@ Decode 的过程是自回归生成，它一次只处理一个 token（用来预�
 
 同时我们可以发现，自回归模式中，**计算量/显存带宽占用**相较于训练和 Prefill 阶段有了明显的下降，转变为了一个访存密集的过程，这主要是因为自回归计算模式的问题，可以在之后看到关于这部分计算模式的优化（比如 Flash Attention 和 PagedAttention）以及减少 KV 本身存储量（KV Quantization）的优化方法。
 
+# 显存
 
+基于知乎文章[GPU内存(显存)的理解与基本使用](https://zhuanlan.zhihu.com/p/462191421)进行学习。这一节的内容可能随着后边的学习慢慢补上，用到哪里学到哪里。
+
+> GPU显存的组成与CPU的内存架构类似，但为了满足并行化运算GPU的显存做了特殊设计，与之相关的概念很多如host memory、device memory、L1/L2 cache、register、texture、constant、shared memory、global memory等，还会涉及一些硬件概念DRAM、On/Off chip memory，还涉及到一些操作如pin memory，zero copy等。概念多了对于初学者就会困惑，比如：
+> 
+> - 数据从系统内存传入到GPU运算单元，需要经过一些什么操作/位置？
+> - texture memory到底是什么，是否有单独的物理硬件，为什么它对图像数据处理有帮助？
+
+下图是包含了内存/硬盘缓冲区/设备内存（我们关注的显存）的简单结构图，其中 CPU 片上 cache、内存和硬盘缓冲区通过主机内部总线连接，而设备则通过 PCIe 总线相连。数据能够经总线到达 host。
+
+![gpu-memory](https://cdn.jsdelivr.net/gh/Guahao31/image-hosting@main/mtg/gpu-memory.jpg)
+
+## 传输通道
+
+在这里我们需要关注不同设备之间的传输通道以及各个传输通道的传输速度/延迟等基本数据。
+
+最常见的设备间连接通过的 PCIe，其随着代差，每一代较上一代的带宽提升一倍，以 **16 通道 PCIe** 为例，PCIe 1.0 带宽 4.0GB/s，PCIe 2.0 带宽 8.0GB/s，PCIe 3.0 带宽 16GB/s。最新的 PCIe 6.0 的 16 通道总带宽达到了 128GB/s，经验上，H2D 拷贝（即 host memory 到显存）能达到 PCIe 总线理论带宽上限的 80%。
+
+N 卡之间还能通过 NVLINK 直接相连，它与 PCIe 在物理上就是两条通道，速度更快，且不会与其他设备争抢 PCIe 的带宽。NVLINK 第二代速度 300GB/s，第三代 600GB/s，2022 年发布的 H100 中第四代 NVLink 达到了 900GB/s。
+
+## 存储（内存）之间的操作
+
+### Pinned Memory
+
+在进行 GPU 与 host memory 之间拷贝时，通常需要将主存对应内存进行锁定，即 pinned memory。它会将内存空间对应页锁住，不会被换页到下层的 disk 中，在使用 pinned memory 后，拷贝速度可以达到 PCIe 总线带宽的 80% 左右。同时需要注意，pinned memory 会消耗系统可用的内存，如果 pin 的范围特别大，可能导致其他过程访问的 page 被频繁换页，导致性能下降。
+
+经验上，pinned memory 还会影响 `torch.empty_cache()` 的用时。
+
+### Zero Copy
+
+指的是 GPU 计算单元直接从 host memory 读取数据，不需要讲数据从
