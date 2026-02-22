@@ -930,4 +930,20 @@ FlashAttention 的主要卖点是 **IO-Awareness**，这里进行简单分析。
 
 在 FlashAttention V2 中，通过调换内外层循环（变为外层 Q 循环，内层 KV 循环）以减少非矩阵的计算量，以及 CUDA GEMM 层次的算子优化，进一步对性能有了提升，这部分内容留待以后学习。
 
+# PagedAttention
+
+PagedAttention 是 vllm 的 attention 策略，其设计目的是优化 llm serving（推理）过程中的显存分配，主要借用了 OS 中的“虚拟地址”来为推理过程中的 KV-Cache 提供更合理的、能充分利用显存空间的使用方式。
+
+有必要介绍一下这个工作的前提：在推理服务中，通常使用 batching 来同时进行多个请求的推理，每个请求都需要提前申请 `max_seq_len` 的 KV-Cache 空间。在这种 KV-Cache 申请模式下，KV-Cache 需要吃掉很大比例的显存（论文中给出的比例是 30%），同时会有严重的显存碎片问题，使得无法充分利用显存空间。
+
+![PagedAttention-blocks](https://cdn.jsdelivr.net/gh/Guahao31/image-hosting@main/mtg/20260222165629043.png)
+
+PagedAttention 实际上，就是给 KV-Cache 的访问加了一层软件上的 translation 过程，分为了逻辑空间和物理空间两个。KV-Cache 在逻辑角度上看地址是连续的，但是其逻辑空间以“页”的粒度离散地映射到物理空间中，需要强调的是这里的“页”和 CUDA 提供的大页并不对应，它是由多个连续 entry 组成的组件 block（一个 entry 对应一个 token 的 KV）。
+
+如上图，*Four score and seven* 的 KV 被缓存到了物理 block1，而与之逻辑上连续的 *years ago our...* 并不是物理上与 block1 连续，而是与物理上 block7 对应。在 serving 过程中，不需要为每个请求都申请 `max_seq_len` 对应的空间，而可以动态的在物理空间上以 block 粒度进行分配。这样的做法也有利于 serving 场景下（或者 batching）多条请求同时处理的情况，可以像 OS 处理进程间虚拟地址的方式类比理解。
+
+同时 PagedAttention 还进行了 KV-cache 的复用，比如在 beam search 策略下，会有一个树状的 token 生成路径，有相同祖先的两个节点可以复用从 root 到共同祖先的物理 block；对于 parallel sampling 的情况（一条请求进行多条 generation）它们可以复用 prefill 阶段 prompts 的所有 kv-cache 内容，并在第一次产生 token 生成分歧的时候 copy-on-write 的进行物理 block 上的分离，而不需要完全单独一套 KV-Cache。
+
+PagedAttention 的设计整体是比较简单的，但是我有几个疑问：这样显然需要一个中心化的控制器来负责进行逻辑空间-物理空间的映射，在分布式部署的场景下，会不会产生过多的代价？CUDA 有提供一个 low-level virtaul memory management API，在这种前提下，PagedAttention 设计的精细化的 KV-Cache 显存管理的意义有多大？同时，有必要通过阅读 vllm 源码确认工程上与论文的实现有没有不同。
+
 
