@@ -896,4 +896,38 @@ PyTorch 的 `autocast` 会自动进行精度判断，它会针对计算密集型
 
 **总结来看**，混合精度训练牺牲了部分静态的显存以及格式转换的代价，获得了 Tensor Core 提供的强大算力，激活值几乎减半的显存释放以及低精度数据搬运的高效（总量减少一半），这个 Trade-Off 怎么看都是赚的。
 
+# FlashAttention
+
+主要参考了[论文](https://arxiv.org/abs/2205.14135)，[知乎文章](https://zhuanlan.zhihu.com/p/669926191)。
+
+FlashAttention 主要解决的问题是在标准 Attention 计算过程中，显存带宽压力过大。核心设计点是充分利用 SRAM（即 L1-cache/shared mem 这一层），将 Attention 的计算进行**分块处理**，使得 SRAM 能够容纳计算的内容，同时进行**算子融合**减少对 HBM 的读写。
+
+FlashAttention 的设计有很多理论推导的部分，但是这部分并不是笔记的重点，只做一些概述，以系统角度的理解为主。o
+
+![FlashAttention](https://cdn.jsdelivr.net/gh/Guahao31/image-hosting@main/mtg/20260222101152477.png)
+
+Attention 计算过程包含 QKV 之间的矩阵乘法、RoPE 位置编码注入、Softmax 等过程，其中矩阵乘法和 RoPE 都可以自然的进行分块处理，而 Softmax 计算过程中需要一行的完整信息，在分块处理的结果中不能直接获得，因此需要对 softmax 进行一些变体，在 FlashAttention 中就是用了 [Online Softmax](https://wangkuiyi.github.io/online-softmax.html) 进行了分块计算的适配，使得原本 `QK -> RoPE -> Softmax -> PV` 的分步计算融合成了 `flashattention` 这个单独的算子。
+
+显存 HBM 额外占用上，传统 Attention 会在 `QK` 的矩阵乘法后获得一个 `[S, S]` 的矩阵，显存需求 $O(S^2)$，随着序列长度呈平方级别上升，而 FlashAttention 的计算过程（不考虑输出矩阵）中只需要保存 `m（全局/分块的最大值）, l（分块单行总和结果）`，其显存需求是 $O(N)$ 的。
+
+FlashAttention 在计算复杂度上与标准 Attention 没有区别，同时其也是精确 Attention 结果（不是稀疏 Attention 那样得到标准 Attention 的一种近似）。
+
+FlashAttention 的主要卖点是 **IO-Awareness**，这里进行简单分析。
+
+- 对于标准 Attention 的过程
+    - 需要从 HBM 读取 $Q, K \in \mathbb{R}^{S*d}$，计算分数 $S=QK^T, S \in \mathbb{R}^{S*S}$ 并写回 HBM
+    - 进行 Softmax 操作从 HBM 读取 $S \in \mathbb{R}^{S*S}$ 计算结果 $P \in \mathbb{R}^{S*S}$ 写回 HBM
+    - 计算得到输出，从 HBM 读取 $P \in \mathbb{R}^{S*S}, V \in \mathbb{R}^{S*d}$，计算得到 $O=PV, O \in \mathbb{R}^{S*d}$ 写回 HBM
+    - 总结来看，标准 Attention 的 HBM 读写复杂度是 $O(Sd + S^2)$
+
+- 对于 FlashAttention 的过程
+    - 在每个外循环中加载 $K, V \in \mathbb{R}^{S*d}$ 的块，总共的 HBM 读取量为 $O(Sd)$
+    - 在内循环中加载 $Q, O \in \mathbb{R}^{S*d}$ 以及一些小的 $m, l$ 块，后者本身比较小这里可以忽略，完整遍历 $Q, O$ 的复杂度为 $O(S*d)$，同时需要遍历外循环次数 $T_c$（即 KV 的分块块数），综合的 HBM IO 复杂度为 $O(T_cSd)$
+    - 还有将 $O, m, l$ 写回 HBM，IO 复杂度可以看作 $O(Sd)$
+    - 综合来看，FlashAttention 的 HBM 读写复杂度是 $O(T_cSd) = O(\frac{S}{B_c}Sd) = O(\frac{4Sd}{M}Sd = O(\frac{S^2d^2}{M})$，其中 $B_c$ 为 KV 分块的每块长度，$B_c = \frac{M}{4d}$ 的推导是将分块 fit 进 SRAM 的值（SRAM 容量 $M$ 以及 KV 在半精度下共需要 $2d+2d=4d$ 字节）,而 $d^2 \ll M$（比如 $d=64, M=100^+KB$）因此综合的 IO 复杂度相较标准 Attention 在常数上小的多
+
+在反向过程中，FlashAttention 对显存的压力也极小，在反向传播过程中，FlashAttention 利用留存在 HBM 中的 $Q, K, V$ 以及 $m, l$ 进行重计算在 SRAM 内部得到 $P_{ij}$ 矩阵并在算完梯度后立刻丢弃，不会对 HBM 有额外的显存压力。同时这个重计算对计算量的增幅在 20% 以下，完全可以接受（用计算换显存带宽）。
+
+在 FlashAttention V2 中，通过调换内外层循环（变为外层 Q 循环，内层 KV 循环）以减少非矩阵的计算量，以及 CUDA GEMM 层次的算子优化，进一步对性能有了提升，这部分内容留待以后学习。
+
 
