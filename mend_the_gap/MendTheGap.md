@@ -945,4 +945,31 @@ PagedAttention 实际上，就是给 KV-Cache 的访问加了一层软件上的 
 
 PagedAttention 的设计整体是比较简单的，但是我有几个疑问：这样显然需要一个中心化的控制器来负责进行逻辑空间-物理空间的映射，在分布式部署的场景下，会不会产生过多的代价？CUDA 有提供一个 low-level virtaul memory management API，在这种前提下，PagedAttention 设计的精细化的 KV-Cache 显存管理的意义有多大？同时，有必要通过阅读 vllm 源码确认工程上与论文的实现有没有不同。
 
+# Continuous Batching
+
+主要参考了 [HuggingFace Blog](https://huggingface.co/blog/continuous_batching) 与 [vLLM源码解析之continuous batch](https://zhuanlan.zhihu.com/p/1914965829864362801)。
+
+在之前的介绍中，batching 一旦确定，在整个推理过程中都是固定的 batch size 条请求进行推理计算，这种静态的 batching 会面临显存冗余消耗、算力浪费的问题：
+
+- 每个请求都会根据 `max_req_len` 配置足量的 KV-Cache 空间，但是它们可能只会生成很短的一个序列，就达到了 `<EOS>` 结束生成过程，这样 `max_req_len` 中没用到的部分显存就空置浪费了
+- 一个 batch 中的请求生成长度不同，在 decoding 阶段，总的生成时间取决于 batch 中生成序列最长的那个请求，已经完成生成过程的请求在静态 batching 下并不会被换出，而是继续参与这个 batch 的计算，进而导致了不必要的大量计算
+
+基于这些问题，很自然的能想到利用动态换出请求的更细粒度的 batching 策略（迭代级 batching，一轮迭代后判断下一轮迭代需要处理什么请求），但是这样也会遇到新的问题。比如 req1 被换出后，其他 req 都在 decoding 阶段等待生成下一个 token，而新进来的 req 却需要一轮 prefill 来建立输入的 KV-Cache，在这种情况下，似乎只能要求其他的 req 等一轮 prefill 的时间，再启动新一轮 decoding。（注意：直观看来，prefill 和 decode 是两个过程，不能在同一个 batch 中同时进行两种计算过程；在使用 Selective Batching 的前提下，一个 batch 可以同时融合 prefill 和 decode 计算）
+
+这里需要补充一些技术简述：Selective Batching 和 Chunked Prefill。
+
+**Selective Batching**
+
+prefill 阶段用大量矩阵运算，得到输入 token 的 KV-Cache 计算；而 decode 阶段对用时敏感，采用矩阵-向量计算快速计算下一个 token 的概率值与选择。直观来看，两者并不能放到同一个 batch 在一轮迭代中同时进行，因为 batch 形成的前提是 batch 内的所有内容进行完全相同的运算。
+
+Selective Batching 的观察是，在 Transformer 架构下，在线性层中，不论是 prefill 还是 decode 实际上都是进行一个简单的矩阵乘法，那么只要把所有 token 展平，形成一个 1D 长条（即将 batch 这一维度消除），就可以用一个大的 GEMM 完全计算完毕；而在 Attention 层中（计算得到 QKV 矩阵后），进行分流，prefill 的部分被交给 FlashAttention kernel 进行 prefill 需要的计算，而 decode 的部分被交给 PagedAttention kernel 进行 decode 需要的计算，等到两边都算出结果后，再合并为 1D 长条，送到下一个线性层中计算。
+
+总结：使用 Selective Batching 技术时，同一轮计算可以同时存在 prefill 和 decode 两个阶段，主要途径是在线性层合并运算，在 Attention 层分流分别进行两种计算。
+
+**Chunked Prefill**
+
+在 Selective Batching 的前提下，我们可以在一轮中塞入不同状态的请求，但由此带来了新的问题：prefill 非常吃计算，如果将一个很长的 req 直接扔进一个迭代，可能导致这轮迭代的时间过长，影响推理效果（decode 部分计算更快，算完以后就开始等着）。
+
+chunked prefill 可以将一个长的输入拆分成小块，每次只对连续一小部分序列进行 prefill 计算，这种情况下，一轮迭代的时间并不会因为 prefill 的存在而极大的拉长，保证了整体推理效率以及较少的算力 bubble。
+
 
