@@ -972,4 +972,8 @@ Selective Batching 的观察是，在 Transformer 架构下，在线性层中，
 
 chunked prefill 可以将一个长的输入拆分成小块，每次只对连续一小部分序列进行 prefill 计算，这种情况下，一轮迭代的时间并不会因为 prefill 的存在而极大的拉长，保证了整体推理效率以及较少的算力 bubble。
 
+**回到 Continuous Batching**
+
+可以看到 continuous batching 需要频繁的（以 step 为时间间隔的）进行显存的重新分配，即释放处理结束的 req 的显存，并引进新的待处理的 req。而在传统的连续显存分配结构下，这种重新分配代价是巨大的，这里就需要引入之前小节提到的 PagedAttention，在 PagedAttention 下物理显存被人为打成了小块，回收时也可以惰性删除，即不直接清理显存，而是用新的内容直接覆盖之前的内容，其重新分配的代价是极小的（基本上只有 table 维护的代价），这两者的结合就是 vllm 早期版本中对 Attention 过程的优化。
+
 
