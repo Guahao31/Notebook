@@ -1115,4 +1115,18 @@ MLP 中激活值的分布与大小如下图所示，其中 SP 负责了 layernor
 
 ![activation-sp-tp](https://pic1.zhimg.com/v2-cb2bdb1b710d9b1061eecad136cd469a_1440w.jpg)
 
+**补充 Ring Attention 简介**
+
+将 QKV 进行分块，每张 GPU 固定一块 Q 并让 KV 进行环状通信，每一时刻只计算一块 KV 的结果，并借以更新自己的 Q 对应的 output（处理方式类似于 FlashAttention），每张卡所做的事情按顺序：在这张卡对当前的 (K, V) 进行计算时，接收前一张卡的 KV 并将当前维护的 KV 传输给下一张卡，整体形成一个环状的通信拓扑。在设计分块合理的情况下，如果**传输时间 <= 计算时间**则传输引来的额外代价被完全覆盖掉，而显存有了极大的节省，每张 GPU 只需要保存自己管理的 sequence chunk 对应的 QKV 块即可。行为如下图所示：
+
+![ring-attn](https://picx.zhimg.com/v2-d11039b3595d651d3d544a11c711d3b7_1440w.jpg)
+
+**Context Parallelism**
+
+Megatron 的 CP 是对 RingAttention 的一种负载均衡的版本。因为在 causal mask 下，一个 token 只关注自己和之前的所有 token，在 ring attn 的切分下，位于前列的（持有 seq 最开始的一段内容的）GPU 只需要维护 Q0，后续轮转的 KV 都是空跑的（attention mask 值为 0），只有最后一块 GPU 完整参与了所有轮转计算。
+
+在 ring attention 的基础上，优化了 Q 的分块模式。它将 seq 的分块从原本的连续 seq 变为靠前的和考后的两端 seq 放置在一张 GPU 上，如图所示，最开始的一段 seq0 和最后的一段 seq7 被 GPU0 管理。这么做的正确性需要以下原因保障：MLP 层是与 seq 无关的（不连续的 seq 对应内容一起计算也无所谓）、分块 attention 的计算和计算顺序无关（只要每次计算时持有当前分块的 output、max、sum 的相关信息就可以正确计算）。如下图所示，在这种放置方式下，每轮次每张卡的计算量是相同的：
+
+![cp](https://pic3.zhimg.com/v2-391d05dae97f76ede5d74faa8c00545c_1440w.jpg)
+
 
